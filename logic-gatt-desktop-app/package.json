@@ -2,6 +2,8 @@
 	"name": "logic-gatt-desktop-app",
 	"version": "1.0.0",
 	"description": "LogicGATT desktop controller — an Electrobun app that drives the phone's BLE GATT server over Wi-Fi.",
+	"license": "MIT",
+	"author": "Dmytro Hranchak",
 	"scripts": {
 		"start": "vite build && electrobun dev",
 		"dev": "electrobun dev --watch",

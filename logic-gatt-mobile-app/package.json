@@ -2,6 +2,8 @@
   "name": "logic-gatt-mobile-app",
   "main": "expo-router/entry",
   "version": "1.0.0",
+  "license": "MIT",
+  "author": "Dmytro Hranchak",
   "dependencies": {
     "@expo/ui": "~57.0.7",
     "expo": "~57.0.7",
