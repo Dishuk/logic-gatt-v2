@@ -4,7 +4,7 @@ export default {
 	app: {
 		name: "LogicGATT",
 		identifier: "com.dishuk.logicgatt.desktop",
-		version: "1.0.0",
+		version: "1.0.1",
 	},
 	build: {
 		// Vite builds to dist/, we copy from there
