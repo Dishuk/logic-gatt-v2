@@ -55,8 +55,10 @@ android:
 # Release-variant APK (Hermes, minifiable), debug-key-signed so it installs for
 # local prod-like testing. Needs a connected device/emulator; the artifact also
 # lands at android/app/build/outputs/apk/release/app-release.apk
+# --no-bundler: a release APK embeds its JS bundle at build time, so skip starting
+# the Metro dev server afterwards (it needs no server, and would fail if 8081 is busy).
 apk:
-	cd $(MOBILE) && npx expo run:android --variant release
+	cd $(MOBILE) && npx expo run:android --variant release --no-bundler
 
 lint:
 	cd $(MOBILE) && npm run lint

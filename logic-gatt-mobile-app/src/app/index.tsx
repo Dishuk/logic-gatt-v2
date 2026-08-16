@@ -1,4 +1,5 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Image } from 'expo-image';
 import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -97,7 +98,14 @@ export default function ConnectScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.topBar, hPad, { paddingTop: PAD + insets.top }]}>
-        <Text style={styles.brand}>LogicGATT</Text>
+        <View style={styles.brandRow}>
+          <Image
+            source={require('../../assets/images/logo-mark.png')}
+            style={styles.logo}
+            contentFit="contain"
+          />
+          <Text style={styles.brand}>LogicGATT</Text>
+        </View>
         <View style={styles.statusRow}>
           <View style={[styles.dot, { backgroundColor: STATUS_COLOR[exec.status] }]} />
           <Text style={styles.statusText}>{exec.status}</Text>
@@ -261,6 +269,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.borderTopbar,
   },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: GAP },
+  logo: { width: 22, height: 22 },
   brand: { fontSize: 16, fontWeight: '700', color: theme.textPrimary, letterSpacing: 0.3 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: GAP },
   dot: { width: 9, height: 9, borderRadius: 5 },
