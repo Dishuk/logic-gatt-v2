@@ -17,6 +17,8 @@ Typical uses:
 Rewrite of [LogicGATT](https://github.com/Dishuk/logic-gatt) (a single-machine web app) as
 two native apps connected over local Wi-Fi.
 
+![The LogicGATT desktop controller with the Heart Rate Monitor example loaded — GATT schema on the left, scenario logic in the sandbox editor](docs/screenshot.png)
+
 ## How it works
 
 The work is split across two apps:
