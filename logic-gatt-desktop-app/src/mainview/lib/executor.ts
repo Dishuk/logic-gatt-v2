@@ -1,4 +1,4 @@
-import type { UserFunction, UserVariable, VarType } from '../types'
+import type { SetVariables, UserFunction, UserVariable, VarType } from '../types'
 import type { WorkerRequest, WorkerResponse } from './sandbox.worker'
 
 export interface ExecutionContext {
@@ -396,7 +396,7 @@ export async function executeFunction(
   input: Uint8Array,
   ctx: ExecutionContext,
   variables: UserVariable[],
-  setVariables: (vars: UserVariable[]) => void,
+  setVariables: SetVariables,
   scenarioNames: string[] = []
 ): Promise<{ output: Uint8Array | null; scenarioRequests: string[] }> {
   const id = crypto.randomUUID()
@@ -421,16 +421,21 @@ export async function executeFunction(
 
     pendingRequests.set(id, {
       resolve: result => {
-        // Apply variable updates
+        // Apply variable updates by merging into the LATEST state (functional updater),
+        // not a snapshot taken when this call started. Timer scenarios and reads run
+        // concurrently, so a stale-snapshot replace would clobber unrelated edits (e.g.
+        // a UI change to batteryLevel wiped out by the 1s heart-rate tick).
         if (result.variableUpdates.length > 0) {
-          const updated = [...variables]
-          for (const update of result.variableUpdates) {
-            const idx = updated.findIndex(v => v.name === update.name)
-            if (idx !== -1) {
-              updated[idx] = { ...updated[idx], initialValue: update.value }
+          setVariables(prev => {
+            const updated = [...prev]
+            for (const update of result.variableUpdates) {
+              const idx = updated.findIndex(v => v.name === update.name)
+              if (idx !== -1) {
+                updated[idx] = { ...updated[idx], initialValue: update.value }
+              }
             }
-          }
-          setVariables(updated)
+            return updated
+          })
         }
 
         resolve({ output: result.output, scenarioRequests: result.scenarioRequests })

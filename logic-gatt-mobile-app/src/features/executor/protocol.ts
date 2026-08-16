@@ -111,6 +111,11 @@ export function mapSchemaToGatt(schema: Schema): GattServiceConfig[] {
       properties: mapCharProperties(chr.properties),
       permissions: mapCharPermissions(chr.properties),
       ...(chr.defaultValue !== undefined ? { value: chr.defaultValue } : {}),
+      // Always delegate reads on readable chars to JS: the desktop computes a fresh value
+      // per read from the current variables. Without this the native server auto-answers
+      // from its last stored value and serves stale data after a UI/variable change. The
+      // desktop guarantees a response to every delegated read (scenario, else defaultValue).
+      ...(chr.properties.read ? { delegate: { read: true } } : {}),
     })),
   }));
 }

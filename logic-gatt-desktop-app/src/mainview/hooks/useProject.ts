@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import type { Schema, Service, UserFunction, UserVariable, UserTest, Scenario, DeviceSettings } from '../types'
+import type { Schema, Service, UserFunction, UserTest, Scenario, DeviceSettings, SetVariables } from '../types'
 import type { ProjectData } from '../lib/schemaIO'
 import { importProject, downloadProject, pickAndImportProject, DEFAULT_DEVICE_SETTINGS } from '../lib/schemaIO'
 import { MAX_SERVICES } from '../lib/constants'
@@ -68,7 +68,8 @@ export function useProject(log: (msg: string) => void) {
   const setDeviceSettings = (ds: DeviceSettings) => setProject(p => ({ ...p, deviceSettings: ds }))
   const setServices = (s: Schema) => setProject(p => ({ ...p, services: s }))
   const setFunctions = (f: UserFunction[]) => setProject(p => ({ ...p, functions: f }))
-  const setVariables = (v: UserVariable[]) => setProject(p => ({ ...p, variables: v }))
+  const setVariables: SetVariables = v =>
+    setProject(p => ({ ...p, variables: typeof v === 'function' ? v(p.variables) : v }))
   const setTests = (t: UserTest[]) => setProject(p => ({ ...p, tests: t }))
   const setScenarios = (s: Scenario[]) => setProject(p => ({ ...p, scenarios: s }))
 

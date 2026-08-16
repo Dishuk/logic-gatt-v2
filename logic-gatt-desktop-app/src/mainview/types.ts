@@ -51,6 +51,13 @@ export interface UserVariable {
   initialValue: string
 }
 
+/**
+ * Variable setter accepting either a new array or a React-style updater. The updater
+ * form is required for async writes (worker results, timer scenarios): it merges into
+ * the latest state instead of a stale snapshot, so concurrent UI edits aren't clobbered.
+ */
+export type SetVariables = (vars: UserVariable[] | ((prev: UserVariable[]) => UserVariable[])) => void
+
 export interface UserTest {
   id: string
   name: string

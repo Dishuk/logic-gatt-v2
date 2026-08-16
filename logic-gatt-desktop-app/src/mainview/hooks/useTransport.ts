@@ -6,7 +6,7 @@
  */
 
 import { useState, useRef, useCallback } from 'react'
-import type { Schema, UserFunction, UserVariable, Scenario, DeviceSettings } from '../types'
+import type { Schema, UserFunction, UserVariable, Scenario, DeviceSettings, SetVariables } from '../types'
 import type { TransportConnection } from '../lib/transport/types'
 import { validateSchema, formatValidationErrors } from '../lib/validation'
 import { startRuntime } from '../lib/runtime'
@@ -20,7 +20,7 @@ interface RuntimeRefs {
   getScenarios: () => Scenario[]
   getFunctions: () => UserFunction[]
   getVariables: () => UserVariable[]
-  setVariables: (vars: UserVariable[]) => void
+  setVariables: SetVariables
 }
 
 export function useTransport({ log, fnLog }: UseTransportOptions) {

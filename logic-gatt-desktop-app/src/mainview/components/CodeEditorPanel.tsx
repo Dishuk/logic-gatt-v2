@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback } from 'react'
-import type { UserFunction, UserVariable, UserTest, VarType, Scenario, Schema } from '../types'
+import type { UserFunction, UserVariable, UserTest, VarType, Scenario, Schema, SetVariables } from '../types'
 import { useCodeMirror } from '../hooks/useCodeMirror'
 import { useSettings } from '../hooks/useSettings'
 import { createCompletionSource } from '../lib/completions'
@@ -49,7 +49,7 @@ interface CodeEditorPanelProps {
     tests: UserTest[]
     scenarios: Scenario[]
     setFunctions: (fns: UserFunction[]) => void
-    setVariables: (vars: UserVariable[]) => void
+    setVariables: SetVariables
     setTests: (tests: UserTest[]) => void
     setScenarios: (scenarios: Scenario[]) => void
   }

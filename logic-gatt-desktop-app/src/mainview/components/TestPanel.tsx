@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { UserFunction, UserVariable, UserTest } from '../types'
+import type { UserFunction, UserVariable, UserTest, SetVariables } from '../types'
 import { executeFunction } from '../lib/executor'
 import { Card, CardHeader, CardBody } from './Card'
 import { HexByteInput } from './HexByteInput'
@@ -19,7 +19,7 @@ interface TestPanelProps {
   functions: UserFunction[]
   variables: UserVariable[]
   tests: UserTest[]
-  onVariablesChange: (vars: UserVariable[]) => void
+  onVariablesChange: SetVariables
   onTestsChange: (tests: UserTest[]) => void
   fnLog: (msg: string) => void
 }
@@ -47,7 +47,7 @@ async function runTest(
   test: UserTest,
   functions: UserFunction[],
   variables: UserVariable[],
-  onVariablesChange: (vars: UserVariable[]) => void,
+  onVariablesChange: SetVariables,
   fnLog: (msg: string) => void
 ): Promise<TestResult | null> {
   const fn = functions.find(f => f.id === test.functionId)

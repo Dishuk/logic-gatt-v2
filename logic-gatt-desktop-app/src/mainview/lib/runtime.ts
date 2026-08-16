@@ -3,7 +3,7 @@
  * Listens for BLE events from the transport connection and runs matching scenario pipelines.
  */
 
-import { TriggerKind, StepKind, type Schema, type Scenario, type UserFunction, type UserVariable } from '../types'
+import { TriggerKind, StepKind, type Schema, type Scenario, type UserFunction, type UserVariable, type SetVariables } from '../types'
 import type { TransportConnection } from './transport/types'
 import { executeFunction } from './executor'
 
@@ -15,13 +15,28 @@ function hexDump(data: Uint8Array): string {
     .join(' ')
 }
 
+/** Parse a characteristic's stored default value (hex string) into bytes for a fallback read. */
+function parseHexBytes(hex: string): Uint8Array {
+  const clean = hex.replace(/[^0-9a-fA-F]/g, '')
+  const out: number[] = []
+  for (let i = 0; i + 2 <= clean.length; i += 2) out.push(parseInt(clean.slice(i, i + 2), 16))
+  return new Uint8Array(out)
+}
+
+/** Look up a characteristic's defaultValue by UUID (case-insensitive); '' if not found. */
+function findCharDefault(schema: Schema, serviceUuid: string, charUuid: string): string {
+  const svc = schema.find(s => s.uuid.toLowerCase() === serviceUuid.toLowerCase())
+  const chr = svc?.characteristics.find(c => c.uuid.toLowerCase() === charUuid.toLowerCase())
+  return chr?.defaultValue ?? ''
+}
+
 interface RuntimeDeps {
   connection: TransportConnection
   schema: Schema
   getScenarios: () => Scenario[]
   getFunctions: () => UserFunction[]
   getVariables: () => UserVariable[]
-  setVariables: (vars: UserVariable[]) => void
+  setVariables: SetVariables
   log: Log
   fnLog: Log
   onDisconnect: () => void
@@ -31,7 +46,7 @@ export function startRuntime(deps: RuntimeDeps): {
   stop: () => void
   runScenario: (scenario: Scenario) => Promise<void>
 } {
-  const { connection, getScenarios, getFunctions, getVariables, setVariables, log, fnLog, onDisconnect } = deps
+  const { connection, schema, getScenarios, getFunctions, getVariables, setVariables, log, fnLog, onDisconnect } = deps
   let stopped = false
   const timerIntervals: ReturnType<typeof setInterval>[] = []
 
@@ -56,9 +71,10 @@ export function startRuntime(deps: RuntimeDeps): {
       serviceUuid?: string
       charUuid?: string
     } = {}
-  ): Promise<{ buffer: Uint8Array | null; pendingScenarios: string[] }> {
+  ): Promise<{ buffer: Uint8Array | null; pendingScenarios: string[]; responded: boolean }> {
     let buffer: Uint8Array | null = inputData
     const pendingScenarios: string[] = []
+    let responded = false
 
     const ctx = {
       log: fnLog,
@@ -116,6 +132,7 @@ export function startRuntime(deps: RuntimeDeps): {
           }
           try {
             await connection.respondToRead(options.serviceUuid!, options.charUuid!, buffer)
+            responded = true
             log(`[scenario] respond [${hexDump(buffer)}]`)
           } catch (err) {
             log(`[scenario] respond failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -126,7 +143,7 @@ export function startRuntime(deps: RuntimeDeps): {
       if (!buffer && step.kind === StepKind.CallFunction) break
     }
 
-    return { buffer, pendingScenarios }
+    return { buffer, pendingScenarios, responded }
   }
 
   /** Run pending scenarios requested via ctx.runScenario() */
@@ -163,16 +180,32 @@ export function startRuntime(deps: RuntimeDeps): {
       return t.kind === triggerKind && t.serviceUuid === serviceUuid && t.charUuid === charUuid
     })
 
+    let anyResponded = false
     for (const scenario of matching) {
       if (stopped) break
       log(`[scenario] "${scenario.name}" triggered`)
 
-      const { buffer, pendingScenarios } = await executeSteps(scenario.steps, inputData, {
+      const { buffer, pendingScenarios, responded } = await executeSteps(scenario.steps, inputData, {
         triggerKind,
         serviceUuid,
         charUuid,
       })
+      if (responded) anyResponded = true
       await runPendingScenarios(pendingScenarios, buffer)
+    }
+
+    // Reads are delegated to us for every request (native never auto-answers from a stale
+    // cached value), so we must answer every one. If no scenario responded, serve the
+    // characteristic's configured default — otherwise the central's read stalls until the
+    // module's request timeout. This also keeps readable-but-scenario-less chars working.
+    if (triggerKind === TriggerKind.CharRead && !anyResponded && !stopped) {
+      const fallback = parseHexBytes(findCharDefault(schema, serviceUuid, charUuid))
+      try {
+        await connection.respondToRead(serviceUuid, charUuid, fallback)
+        log(`[runtime] READ ${serviceUuid}/${charUuid} → default [${hexDump(fallback)}]`)
+      } catch (err) {
+        log(`[runtime] read fallback respond failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
     }
   }
 
