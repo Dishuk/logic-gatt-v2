@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Electrobun / Vite build output
+build/
+dist/
+artifacts/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Logs & crash dumps
+*.log
+*.stackdump
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# OS cruft
+.DS_Store

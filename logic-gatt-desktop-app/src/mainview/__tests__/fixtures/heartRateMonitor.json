@@ -1,0 +1,198 @@
+{
+  "deviceSettings": {
+    "deviceName": "HRM",
+    "appearance": 833,
+    "manufacturerData": ""
+  },
+  "services": [
+    {
+      "uuid": "0000180d-0000-1000-8000-00805f9b34fb",
+      "tag": "Heart Rate Service",
+      "characteristics": [
+        {
+          "uuid": "00002a37-0000-1000-8000-00805f9b34fb",
+          "tag": "Heart Rate Measurement",
+          "properties": { "read": false, "write": false, "notify": true },
+          "defaultValue": ""
+        },
+        {
+          "uuid": "00002a38-0000-1000-8000-00805f9b34fb",
+          "tag": "Body Sensor Location",
+          "properties": { "read": true, "write": false, "notify": false },
+          "defaultValue": ""
+        },
+        {
+          "uuid": "00002a39-0000-1000-8000-00805f9b34fb",
+          "tag": "Heart Rate Control Point",
+          "properties": { "read": false, "write": true, "notify": false },
+          "defaultValue": ""
+        }
+      ]
+    },
+    {
+      "uuid": "0000180f-0000-1000-8000-00805f9b34fb",
+      "tag": "Battery Service",
+      "characteristics": [
+        {
+          "uuid": "00002a19-0000-1000-8000-00805f9b34fb",
+          "tag": "Battery Level",
+          "properties": { "read": true, "write": false, "notify": true },
+          "defaultValue": ""
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "simulateHeartBeat",
+      "body": "// Simulate realistic heart rate with variability\nlet hr = ctx.getVar('heartRate');\nconst baseHR = ctx.getVar('baseHeartRate');\nconst variability = ctx.getVar('hrVariability');\n\n// Add heart rate variability (HRV)\nconst delta = Math.floor((Math.random() - 0.5) * variability * 2);\nhr = Math.max(40, Math.min(220, baseHR + delta));\nctx.setVar('heartRate', hr);\n\n// Increment energy expended (~1 kJ per minute at rest)\nlet energy = ctx.getVar('energyExpended');\nenergy = Math.min(65535, energy + 1);\nctx.setVar('energyExpended', energy);\n\n// Build BLE Heart Rate Measurement packet\n// Flags: bit 3 = energy present, bit 4 = RR present\nconst w = writer();\nw.uint8(0x18);      // flags: energy + RR interval\nw.uint8(hr);        // heart rate (uint8)\nw.uint16LE(energy); // energy expended (kJ)\n\n// RR interval in 1/1024 seconds\nconst rrInterval = Math.floor((60 / hr) * 1024);\nw.uint16LE(rrInterval);\n\nctx.log(`HR=${hr} bpm, Energy=${energy} kJ`);\nreturn w.build();"
+    },
+    {
+      "name": "parseControlPoint",
+      "body": "// Parse Heart Rate Control Point commands\n// Command 0x01 = Reset Energy Expended\n\nif (input.length === 0) {\n  ctx.log('Control Point: empty command');\n  return null;\n}\n\nconst cmd = reader(input).uint8();\n\nif (cmd === 0x01) {\n  ctx.setVar('energyExpended', 0);\n  ctx.log('Control Point: Energy Expended reset to 0');\n} else {\n  ctx.log(`Control Point: Unknown command 0x${cmd.toString(16)}`);\n}\n\nreturn null;"
+    },
+    {
+      "name": "getBodySensorLocation",
+      "body": "// Return Body Sensor Location\n// 0=Other, 1=Chest, 2=Wrist, 3=Finger, 4=Hand, 5=Ear Lobe, 6=Foot\n\nconst location = ctx.getVar('sensorLocation');\nctx.log(`Body Sensor Location: ${location}`);\n\nreturn writer().uint8(location).build();"
+    },
+    {
+      "name": "getBatteryLevel",
+      "body": "// Return current battery level (0-100%)\n\nconst level = ctx.getVar('batteryLevel');\nctx.log(`Battery Level: ${level}%`);\n\nreturn writer().uint8(level).build();"
+    },
+    {
+      "name": "resetToDefaults",
+      "body": "// Reset all variables to default values\nctx.setVar('heartRate', 72);\nctx.setVar('baseHeartRate', 72);\nctx.setVar('hrVariability', 5);\nctx.setVar('energyExpended', 0);\nctx.setVar('batteryLevel', 85);\n\nctx.log('All variables reset to defaults');\n\n// Return current HR measurement\nconst w = writer();\nw.uint8(0x18);\nw.uint8(72);\nw.uint16LE(0);\nw.uint16LE(Math.floor((60 / 72) * 1024));\nreturn w.build();"
+    }
+  ],
+  "variables": [
+    {
+      "name": "heartRate",
+      "type": "u8",
+      "initialValue": "72"
+    },
+    {
+      "name": "baseHeartRate",
+      "type": "u8",
+      "initialValue": "72"
+    },
+    {
+      "name": "hrVariability",
+      "type": "u8",
+      "initialValue": "5"
+    },
+    {
+      "name": "energyExpended",
+      "type": "u16",
+      "initialValue": "0"
+    },
+    {
+      "name": "sensorLocation",
+      "type": "u8",
+      "initialValue": "1"
+    },
+    {
+      "name": "batteryLevel",
+      "type": "u8",
+      "initialValue": "85"
+    }
+  ],
+  "tests": [
+    {
+      "name": "Body sensor location (Chest)",
+      "functionName": "getBodySensorLocation",
+      "inputHex": "",
+      "expectedHex": "01"
+    },
+    {
+      "name": "Battery level (85%)",
+      "functionName": "getBatteryLevel",
+      "inputHex": "",
+      "expectedHex": "55"
+    },
+    {
+      "name": "Control point reset energy",
+      "functionName": "parseControlPoint",
+      "inputHex": "01",
+      "expectedHex": ""
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Auto HR Notification (1s)",
+      "enabled": true,
+      "trigger": {
+        "kind": "timer",
+        "intervalMs": 1000,
+        "repeat": true
+      },
+      "steps": [
+        { "kind": "call-function", "functionName": "simulateHeartBeat" },
+        {
+          "kind": "notify",
+          "serviceUuid": "0000180d-0000-1000-8000-00805f9b34fb",
+          "charUuid": "00002a37-0000-1000-8000-00805f9b34fb"
+        }
+      ]
+    },
+    {
+      "name": "Read Body Sensor Location",
+      "enabled": true,
+      "trigger": {
+        "kind": "char-read",
+        "serviceUuid": "0000180d-0000-1000-8000-00805f9b34fb",
+        "charUuid": "00002a38-0000-1000-8000-00805f9b34fb"
+      },
+      "steps": [{ "kind": "call-function", "functionName": "getBodySensorLocation" }, { "kind": "respond" }]
+    },
+    {
+      "name": "Handle Control Point Write",
+      "enabled": true,
+      "trigger": {
+        "kind": "char-write",
+        "serviceUuid": "0000180d-0000-1000-8000-00805f9b34fb",
+        "charUuid": "00002a39-0000-1000-8000-00805f9b34fb"
+      },
+      "steps": [{ "kind": "call-function", "functionName": "parseControlPoint" }]
+    },
+    {
+      "name": "Read Battery Level",
+      "enabled": true,
+      "trigger": {
+        "kind": "char-read",
+        "serviceUuid": "0000180f-0000-1000-8000-00805f9b34fb",
+        "charUuid": "00002a19-0000-1000-8000-00805f9b34fb"
+      },
+      "steps": [{ "kind": "call-function", "functionName": "getBatteryLevel" }, { "kind": "respond" }]
+    },
+    {
+      "name": "Reset to Defaults",
+      "enabled": true,
+      "trigger": {
+        "kind": "manual"
+      },
+      "steps": [
+        { "kind": "call-function", "functionName": "resetToDefaults" },
+        {
+          "kind": "notify",
+          "serviceUuid": "0000180d-0000-1000-8000-00805f9b34fb",
+          "charUuid": "00002a37-0000-1000-8000-00805f9b34fb"
+        }
+      ]
+    },
+    {
+      "name": "Send Battery Notification",
+      "enabled": true,
+      "trigger": {
+        "kind": "manual"
+      },
+      "steps": [
+        { "kind": "call-function", "functionName": "getBatteryLevel" },
+        {
+          "kind": "notify",
+          "serviceUuid": "0000180f-0000-1000-8000-00805f9b34fb",
+          "charUuid": "00002a19-0000-1000-8000-00805f9b34fb"
+        }
+      ]
+    }
+  ]
+}

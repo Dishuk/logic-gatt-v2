@@ -1,0 +1,15 @@
+{
+  "name": "@logic-gatt/theme",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared design tokens (color scheme, spacing, radii, type scale) for the desktop and mobile apps.",
+  "main": "tokens.ts",
+  "types": "tokens.ts",
+  "exports": {
+    ".": "./tokens.ts"
+  },
+  "scripts": {
+    "build:css": "bun build-css.ts"
+  }
+}

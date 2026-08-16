@@ -1,0 +1,96 @@
+{
+  "services": [
+    {
+      "uuid": "b2bb0000-46da-11ed-b878-0242ac120002",
+      "tag": "Demo Service",
+      "characteristics": [
+        {
+          "uuid": "b2bb0001-46da-11ed-b878-0242ac120002",
+          "tag": "Data",
+          "properties": { "read": true, "write": true, "notify": true },
+          "defaultValue": ""
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "echo",
+      "body": "// Simply return the input unchanged\nreturn input;"
+    },
+    {
+      "name": "readerExample",
+      "body": "// reader(data) - creates a stateful binary reader\n// Auto-advances position after each read\n\nconst r = reader(input);\n\n// Read integers\nconst cmd = r.uint8();        // 1 byte\nconst id = r.uint16LE();      // 2 bytes, little-endian\nconst flags = r.uint32LE();   // 4 bytes, little-endian\n\n// Big-endian variants: r.uint16BE(), r.uint32BE()\n// Signed variants: r.int8(), r.int16LE(), r.int32LE()\n// Variable length: r.uintLE(n), r.intBE(n) - returns bigint if n > 4\n\n// Read raw bytes\nconst payload = r.bytes(4);  // next 4 bytes as Uint8Array\n\n// Utility methods\n// r.skip(n)      - skip n bytes\n// r.pos         - current position (read/write)\n// r.remaining() - bytes left to read\n\nctx.log(`cmd=${cmd} id=${id} flags=${flags}`);\nreturn payload;"
+    },
+    {
+      "name": "writerExample",
+      "body": "// writer() - creates a chainable binary builder\n\nconst w = writer();\n\n// Write integers\nw.uint8(0x01);             // 1 byte\nw.uint16LE(0x1234);        // 2 bytes -> [0x34, 0x12]\nw.uint32LE(0xDEADBEEF);    // 4 bytes -> [0xEF, 0xBE, 0xAD, 0xDE]\n\n// Big-endian variants: w.uint16BE(), w.uint32BE()\n// Signed variants: w.int8(), w.int16LE(), w.int32LE()\n// Variable length: w.uintLE(value, n), w.intBE(value, n)\n\n// Write raw bytes\nw.bytes([0xAA, 0xBB]);\nw.bytes(input);  // append input buffer\n\n// Chaining supported\n// writer().uint8(1).uint16LE(2).uint32LE(3).build()\n\nreturn w.build();  // returns Uint8Array"
+    },
+    {
+      "name": "variablesExample",
+      "body": "// Variables persist across function calls\n// Must be declared in Variables tab first\n\n// Read a variable\nconst count = ctx.getVar('counter');\n\n// Write a variable (type must match)\nctx.setVar('counter', count + 1);\n\n// Variable types:\n// - u8, u16, u32: numbers\n// - hex: Uint8Array\n// - string: text\n\n// Logging\nctx.log('Counter: ' + (count + 1));\nconsole.log('Also works:', count + 1);\n// console.warn(), console.error(), console.info()\n\n// Return counter as little-endian u32\nreturn writer().uint32LE(count + 1).build();"
+    },
+    {
+      "name": "protocolExample",
+      "body": "// Example: parse request, build response\n// Request:  [cmd:uint8] [len:uint8] [data:len bytes]\n// Response: [status:uint8] [cmd:uint8] [result:uint16]\n\nconst r = reader(input);\nconst cmd = r.uint8();\nconst len = r.uint8();\nconst data = r.bytes(len);\n\n// Process data (sum all bytes)\nlet sum = 0;\nfor (const b of data) sum += b;\n\nctx.log(`cmd=${cmd} len=${len} sum=${sum}`);\n\n// Build response\nreturn writer()\n  .uint8(0x00)      // status: OK\n  .uint8(cmd)       // echo command\n  .uint16LE(sum)    // result\n  .build();"
+    }
+  ],
+  "variables": [
+    {
+      "name": "counter",
+      "type": "u32",
+      "initialValue": "0"
+    }
+  ],
+  "tests": [
+    {
+      "name": "echo passthrough",
+      "functionName": "echo",
+      "inputHex": "01 02 03",
+      "expectedHex": "01 02 03"
+    },
+    {
+      "name": "reader extracts payload",
+      "functionName": "readerExample",
+      "inputHex": "05 34 12 EF BE AD DE AA BB CC DD",
+      "expectedHex": "AA BB CC DD"
+    },
+    {
+      "name": "writer builds packet",
+      "functionName": "writerExample",
+      "inputHex": "FF",
+      "expectedHex": "01 34 12 EF BE AD DE AA BB FF"
+    },
+    {
+      "name": "variables increment",
+      "functionName": "variablesExample",
+      "inputHex": "",
+      "expectedHex": "01 00 00 00"
+    },
+    {
+      "name": "protocol parse and respond",
+      "functionName": "protocolExample",
+      "inputHex": "10 03 01 02 03",
+      "expectedHex": "00 10 06 00"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Echo on Write",
+      "enabled": true,
+      "trigger": {
+        "kind": "char-write",
+        "serviceUuid": "b2bb0000-46da-11ed-b878-0242ac120002",
+        "charUuid": "b2bb0001-46da-11ed-b878-0242ac120002"
+      },
+      "steps": [
+        { "kind": "call-function", "functionName": "echo" },
+        {
+          "kind": "notify",
+          "serviceUuid": "b2bb0000-46da-11ed-b878-0242ac120002",
+          "charUuid": "b2bb0001-46da-11ed-b878-0242ac120002"
+        }
+      ]
+    }
+  ]
+}

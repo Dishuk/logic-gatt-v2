@@ -1,0 +1,58 @@
+/* AUTO-GENERATED from shared/tokens.ts — do not edit by hand.
+   Regenerate with:  bun shared/build-css.ts   (or `make gen-theme`) */
+:root {
+  /* Base palette */
+  --bg-darkest: #010409;
+  --bg-body: #0d1117;
+  --bg-surface: #161b22;
+  --bg-dark: #1c2128;
+  --bg-button: #21262d;
+  --bg-button-hover: #2d333b;
+  --bg-topbar: #161b22;
+  --bg-error: #1c0c0c;
+  --bg-error-btn: #3d1117;
+  --bg-error-btn-hover: #4d1a1f;
+  --border-primary: #30363d;
+  --border-focus: #484f58;
+  --border-topbar: #30363d;
+  --border-error-transparent: #f8514950;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-content: #c9d1d9;
+  --text-muted: #6e7681;
+  --accent-blue: #58a6ff;
+  --accent-blue-light: #79c0ff;
+  --accent-blue-transparent: #388bfd26;
+  --accent-green-dark: #238636;
+  --accent-red: #f85149;
+  --accent-red-light: #ff7b72;
+  --accent-purple: #d2a8ff;
+  --status-green: #34d399;
+  --status-amber: #f59e0b;
+  --overlay-bg: rgba(0, 0, 0, 0.7);
+  --modal-shadow: rgba(0, 0, 0, 0.5);
+
+  /* Semantic roles */
+  --color-success: var(--accent-green-dark);
+  --color-error: var(--accent-red);
+  --color-link: var(--accent-blue);
+  --color-accent: var(--accent-blue);
+  --color-keyword: var(--accent-red-light);
+  --color-function: var(--accent-purple);
+  --color-type: var(--accent-blue-light);
+  --bg-medium: var(--bg-surface);
+  --bg-hover: var(--bg-dark);
+  --scrollbar-thumb: var(--border-primary);
+  --scrollbar-thumb-hover: var(--border-focus);
+  --toggle-bg: var(--border-primary);
+  --toggle-bg-active: var(--accent-green-dark);
+  --toggle-knob: var(--border-focus);
+  --toggle-knob-active: var(--text-primary);
+
+  /* Radius scale */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  color-scheme: dark;
+}

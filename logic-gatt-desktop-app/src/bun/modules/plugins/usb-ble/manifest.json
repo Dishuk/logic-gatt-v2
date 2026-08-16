@@ -1,0 +1,9 @@
+{
+  "id": "usb-ble",
+  "name": "usb-ble",
+  "version": "1.0.0",
+  "description": "PC Bluetooth adapter / USB BT dongle (Python bless backend).",
+  "icon": "bluetooth",
+  "color": "#3B82F6",
+  "apiVersion": 1
+}

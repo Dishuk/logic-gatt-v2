@@ -1,0 +1,8 @@
+# Toolchain provisioning ONLY. mise installs the Node + Bun versions the two
+# apps need — run `mise install` once. Everything else (build/run/dev/lint/
+# install deps) lives in the Makefile (`make help`); mise just puts the tools
+# on PATH so those `make` targets can call node/npm/npx/bun.
+
+[tools]
+node = "lts"    # mobile app (Expo / npm)
+bun = "latest"  # desktop app (Electrobun)

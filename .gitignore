@@ -1,0 +1,68 @@
+# ───────────────────────────────────────────────────────────────
+#  logic-gatt-v2 — repo-root gitignore
+#  Framework-specific rules live in each app's own .gitignore
+#  (Expo: logic-gatt-mobile-app, Electrobun: logic-gatt-desktop-app).
+#  This file covers cross-cutting and repo-wide artifacts.
+# ───────────────────────────────────────────────────────────────
+
+# Dev-only reference material — NEVER committed (old app + module clones; see CLAUDE.md)
+.local/
+
+# Internal design/porting notes — not part of the published repo
+migration_docs/
+
+# Dependencies
+node_modules/
+
+# Build output, caches, coverage
+dist/
+build/
+artifacts/
+release/
+coverage/
+.cache/
+*.tsbuildinfo
+
+# Logs & crash dumps
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.stackdump
+
+# Environment & secrets (keep *.example templates)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.p8
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS cruft
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Local tooling overrides (mise)
+mise.local.toml
+.mise.local.toml
+
+# AI assistant artifacts — not committed (at any depth)
+.claude/
+.cursor/
+.cursorrules
+.aider*
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.github/copilot-instructions.md

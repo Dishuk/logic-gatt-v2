@@ -1,0 +1,9 @@
+{
+  "id": "ble-uart",
+  "name": "ble-uart",
+  "version": "1.0.0",
+  "description": "MCU over USB-UART serial (ESP32, nRF52, …).",
+  "icon": "usb",
+  "color": "#f59e0b",
+  "apiVersion": 1
+}
