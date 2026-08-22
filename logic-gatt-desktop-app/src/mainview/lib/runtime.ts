@@ -3,7 +3,7 @@
  * Listens for BLE events from the transport connection and runs matching scenario pipelines.
  */
 
-import { TriggerKind, StepKind, type Schema, type Scenario, type UserFunction, type UserVariable, type SetVariables } from '../types'
+import { TriggerKind, StepKind, type Schema, type Scenario, type TimerTrigger, type UserFunction, type UserVariable, type SetVariables } from '../types'
 import type { TransportConnection } from './transport/types'
 import { executeFunction } from './executor'
 
@@ -48,7 +48,7 @@ export function startRuntime(deps: RuntimeDeps): {
 } {
   const { connection, schema, getScenarios, getFunctions, getVariables, setVariables, log, fnLog, onDisconnect } = deps
   let stopped = false
-  const timerIntervals: ReturnType<typeof setInterval>[] = []
+  const timers = new Set<ReturnType<typeof setTimeout>>()
 
   /** Get all scenario names for ctx.runScenario() API */
   function getScenarioNames(): string[] {
@@ -246,11 +246,8 @@ export function startRuntime(deps: RuntimeDeps): {
     if (stopped) return
     stopped = true
     unsubscribe()
-    // Clear all timer intervals
-    for (const interval of timerIntervals) {
-      clearInterval(interval)
-    }
-    timerIntervals.length = 0
+    for (const t of timers) clearTimeout(t)
+    timers.clear()
     log('[runtime] Stopped')
   }
 
@@ -262,31 +259,36 @@ export function startRuntime(deps: RuntimeDeps): {
   // Run startup triggers (once, after a short delay to let BLE settle)
   const startupScenarios = scenarios.filter(s => s.enabled && s.trigger.kind === TriggerKind.Startup)
   if (startupScenarios.length > 0) {
-    setTimeout(async () => {
+    const handle = setTimeout(async () => {
+      timers.delete(handle)
       for (const scenario of startupScenarios) {
         if (stopped) break
         await runScenarioSteps(scenario)
       }
     }, 500)
+    timers.add(handle)
   }
 
-  // Set up timer triggers
+  // Set up timer triggers. Which scenarios have timers is fixed at start, but each tick
+  // re-reads the scenario so interval/steps/enabled edits apply without a restart.
   const timerScenarios = scenarios.filter(s => s.enabled && s.trigger.kind === TriggerKind.Timer)
   for (const scenario of timerScenarios) {
-    const trigger = scenario.trigger as { kind: TriggerKind.Timer; intervalMs: number; repeat: boolean }
-    log(`[runtime] Timer "${scenario.name}" every ${trigger.intervalMs}ms`)
+    log(`[runtime] Timer "${scenario.name}" every ${(scenario.trigger as TimerTrigger).intervalMs}ms`)
 
-    if (trigger.repeat) {
-      const interval = setInterval(() => {
-        if (!stopped) runScenarioSteps(scenario)
-      }, trigger.intervalMs)
-      timerIntervals.push(interval)
-    } else {
-      // One-shot timer
-      setTimeout(() => {
-        if (!stopped) runScenarioSteps(scenario)
-      }, trigger.intervalMs)
+    const schedule = (delayMs: number) => {
+      const handle = setTimeout(async () => {
+        timers.delete(handle)
+        if (stopped) return
+        const live = getScenarios().find(s => s.id === scenario.id)
+        const trigger = live?.trigger
+        if (!live || trigger?.kind !== TriggerKind.Timer) return
+        // Awaited so a slow scenario delays the next tick instead of overlapping itself.
+        if (live.enabled) await runScenarioSteps(live)
+        if (!stopped && trigger.repeat) schedule(trigger.intervalMs)
+      }, delayMs)
+      timers.add(handle)
     }
+    schedule((scenario.trigger as TimerTrigger).intervalMs)
   }
 
   return {
