@@ -10,6 +10,7 @@ import { HexByteInput } from './HexByteInput'
 import { TestPanel } from './TestPanel'
 import { ScenariosPanel } from './ScenariosPanel'
 import { ModuleSettings } from './ModuleSettings'
+import { SettingsSection } from './SettingsSection'
 import type { Extension } from '@codemirror/state'
 import { CodeBlock } from './CodeBlock'
 import { GripVertical, BookOpen } from 'lucide-react'
@@ -348,38 +349,40 @@ export function CodeEditorPanel({ project, fnLogger, transport }: CodeEditorPane
             />
           </div>
           <div className="settings-tab" style={{ display: tab === 'settings' ? undefined : 'none' }}>
-            <Card>
-              <CardHeader title="Editor Theme" noBorder />
-              <CardBody>
-                <select
-                  className="select w-full"
-                  value={settings.editorTheme}
-                  onChange={e => setSetting('editorTheme', e.target.value)}
-                >
-                  {themeNames.map(name => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <ThemePreview theme={themeExtension} />
-              </CardBody>
-            </Card>
-            <Card>
-              <CardHeader title="Runtime" noBorder />
-              <CardBody>
-                <label className="settings-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings.resetVariablesOnDisconnect}
-                    disabled
-                    onChange={e => setSetting('resetVariablesOnDisconnect', e.target.checked)}
-                  />
-                  Reset variables on disconnect
-                  <span className="settings-hint">(coming soon)</span>
-                </label>
-              </CardBody>
-            </Card>
+            <SettingsSection title="General" subtitle="Applies to the whole app.">
+              <Card>
+                <CardHeader title="Editor Theme" noBorder />
+                <CardBody>
+                  <select
+                    className="select w-full"
+                    value={settings.editorTheme}
+                    onChange={e => setSetting('editorTheme', e.target.value)}
+                  >
+                    {themeNames.map(name => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <ThemePreview theme={themeExtension} />
+                </CardBody>
+              </Card>
+              <Card>
+                <CardHeader title="Runtime" noBorder />
+                <CardBody>
+                  <label className="settings-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={settings.resetVariablesOnDisconnect}
+                      disabled
+                      onChange={e => setSetting('resetVariablesOnDisconnect', e.target.checked)}
+                    />
+                    Reset variables on disconnect
+                    <span className="settings-hint">(coming soon)</span>
+                  </label>
+                </CardBody>
+              </Card>
+            </SettingsSection>
             <ModuleSettings />
           </div>
         </div>

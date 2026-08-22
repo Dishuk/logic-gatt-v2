@@ -1804,6 +1804,34 @@ input[type='number'] {
   margin-left: 0.25rem;
 }
 
+/* Named settings groups — "General", then one per module */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-section-title {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.settings-section-subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.settings-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
 /* Module-contributed settings sections */
 .module-setting + .module-setting {
   margin-top: 0.75rem;
