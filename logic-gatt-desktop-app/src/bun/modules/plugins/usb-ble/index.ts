@@ -17,6 +17,8 @@ import { PluginBase, pluginToModule } from "../../sdk";
 import type {
 	ModuleContext,
 	ModuleFactory,
+	ModuleSettingDef,
+	ModuleSettingValues,
 	PluginRoute,
 	Schema,
 	DeviceSettings,
@@ -53,6 +55,8 @@ class UsbBlePlugin extends PluginBase {
 	private pythonBackendPath: string;
 	private bridgeBinaryPath: string;
 	private exitGuard: (() => void) | null = null;
+	/** Off by default: renaming the adapter mutates the host system (see getSettings). */
+	private overwriteAdapterName = false;
 	private isConnecting = false;
 	private isUploading = false;
 	private requestIdCounter = 0;
@@ -111,6 +115,26 @@ class UsbBlePlugin extends PluginBase {
 	isAvailable(): boolean {
 		if (process.platform !== "win32" && process.platform !== "linux") return false;
 		return this.resolveBackendCommand() !== null;
+	}
+
+	getSettings(): ModuleSettingDef[] {
+		return [
+			{
+				id: "overwriteAdapterName",
+				label: "Apply the device name to the Bluetooth adapter",
+				description:
+					"Windows advertises the system Bluetooth name, so the project's Device Name is ignored. " +
+					"Enabling this renames the adapter system-wide (registry + adapter restart), which needs " +
+					"Administrator and persists after the app closes.",
+				type: "boolean",
+				default: false,
+				platforms: ["win32"],
+			},
+		];
+	}
+
+	onSettingsChanged(values: ModuleSettingValues): void {
+		this.overwriteAdapterName = values.overwriteAdapterName === true;
 	}
 
 	getRoutes(): PluginRoute[] {
@@ -182,6 +206,7 @@ class UsbBlePlugin extends PluginBase {
 					deviceName: settings.deviceName,
 					appearance: settings.appearance ?? 0,
 					manufacturerData: settings.manufacturerData ?? [],
+					nameOverwrite: this.overwriteAdapterName,
 				},
 			});
 			this.ctx.log("Schema uploaded to Python backend");
@@ -318,6 +343,14 @@ class UsbBlePlugin extends PluginBase {
 			});
 
 			await new Promise((r) => setTimeout(r, PYTHON_STARTUP_DELAY_MS));
+			// The exit handler nulls this. Without the check we would happily connect to
+			// whatever else is on the port — e.g. a stale bridge from an earlier session,
+			// silently running a different build.
+			if (!this.pythonProcess) {
+				throw new Error(
+					`BLE bridge exited on startup — port ${PYTHON_WS_PORT} may already be in use by another instance.`,
+				);
+			}
 			await this.connectToPythonWs();
 		} finally {
 			this.isConnecting = false;

@@ -9,6 +9,7 @@ import { Card, CardHeader, CardBody } from './Card'
 import { HexByteInput } from './HexByteInput'
 import { TestPanel } from './TestPanel'
 import { ScenariosPanel } from './ScenariosPanel'
+import { ModuleSettings } from './ModuleSettings'
 import type { Extension } from '@codemirror/state'
 import { CodeBlock } from './CodeBlock'
 import { GripVertical, BookOpen } from 'lucide-react'
@@ -379,6 +380,7 @@ export function CodeEditorPanel({ project, fnLogger, transport }: CodeEditorPane
                 </label>
               </CardBody>
             </Card>
+            <ModuleSettings />
           </div>
         </div>
       </div>

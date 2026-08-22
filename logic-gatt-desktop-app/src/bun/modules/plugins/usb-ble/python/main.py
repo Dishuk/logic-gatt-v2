@@ -95,9 +95,18 @@ class BleGattServer:
         self.char_values.clear()
         self.char_to_service.clear()
 
-        # Create new server (name_overwrite=True for custom device name)
+        # name_overwrite renames the host's Bluetooth adapter system-wide (registry +
+        # adapter restart on Windows), so it is opt-in from the app's Settings screen.
+        name_overwrite = bool(settings.get("nameOverwrite", False))
         log.info(f"[BLE] Creating BlessServer as '{self.device_name}'...")
-        self.server = BlessServer(name=self.device_name, loop=asyncio.get_event_loop(), name_overwrite=True)
+        if not name_overwrite:
+            log.info(
+                "[BLE] Adapter rename disabled — the advertised name is the system "
+                "Bluetooth name, not the project's Device Name"
+            )
+        self.server = BlessServer(
+            name=self.device_name, loop=asyncio.get_event_loop(), name_overwrite=name_overwrite
+        )
         self.server.read_request_func = self._read_request_handler
         self.server.write_request_func = self._write_request_handler
 

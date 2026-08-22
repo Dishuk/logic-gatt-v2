@@ -86,6 +86,22 @@ export interface PluginAction {
 	ui?: PluginActionUI;
 }
 
+/**
+ * A setting a module contributes to the app's Settings screen. Modules declare these
+ * rather than the UI hard-coding them, so a new module brings its own section.
+ */
+export interface ModuleSettingDef {
+	id: string;
+	label: string;
+	description?: string;
+	type: "boolean" | "string" | "number";
+	default: boolean | string | number;
+	/** Restrict to these `process.platform` values; shown everywhere when omitted. */
+	platforms?: string[];
+}
+
+export type ModuleSettingValues = Record<string, boolean | string | number>;
+
 export interface PluginInfo {
 	id: string;
 	name: string;
@@ -94,6 +110,8 @@ export interface PluginInfo {
 	icon?: string;
 	color?: string;
 	actions: PluginAction[];
+	/** Settings this module contributes; rendered as its own Settings section. */
+	settings?: ModuleSettingDef[];
 	isAvailable: boolean;
 	/**
 	 * Marks the recommended default connection way. Shown first in the Select

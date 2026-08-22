@@ -21,6 +21,7 @@ import type {
 	DesktopModule,
 	ModuleContext,
 	ModuleFactory,
+	ModuleSettingValues,
 	PluginEvent,
 	PluginInfo,
 	PluginManifest,
@@ -133,6 +134,11 @@ export class ModuleRegistry {
 
 	get(id: string): DesktopModule | null {
 		return this.modules.get(id) ?? null;
+	}
+
+	/** Hand a module the user's values for its declared settings. Unknown ids are ignored. */
+	async applySettings(id: string, values: ModuleSettingValues): Promise<void> {
+		await this.modules.get(id)?.applySettings?.(values);
 	}
 
 	active(): DesktopModule | null {

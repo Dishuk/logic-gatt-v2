@@ -128,6 +128,9 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
 				const mod = registry.get(moduleId);
 				return mod ? mod.handleAction(method, path, body) : {};
 			},
+			async setModuleSettings({ moduleId, values }) {
+				await registry.applySettings(moduleId, values);
+			},
 			async getPresets() {
 				return Object.keys(PRESETS);
 			},

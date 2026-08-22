@@ -13,6 +13,7 @@
 import type {
 	PluginEvent,
 	PluginInfo,
+	ModuleSettingValues,
 	Schema as WireSchema,
 	DeviceSettings as WireDeviceSettings,
 } from "./wire";
@@ -68,6 +69,8 @@ export type DesktopRPCSchema = {
 				{ moduleId: string; method: string; path: string; body?: unknown },
 				unknown
 			>;
+			/** Push the user's values for a module's declared settings (see PluginInfo.settings). */
+			setModuleSettings: Req<{ moduleId: string; values: ModuleSettingValues }, void>;
 			// presets
 			getPresets: Req<void, string[]>;
 			getPreset: Req<{ name: string }, unknown>;

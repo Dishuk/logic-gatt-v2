@@ -12,11 +12,22 @@ import type {
 	PluginInfo,
 	PluginAction,
 	PluginActionUI,
+	ModuleSettingDef,
+	ModuleSettingValues,
 	Schema,
 	DeviceSettings,
 } from "../../shared/wire";
 
-export type { PluginEvent, PluginInfo, PluginAction, PluginActionUI, Schema, DeviceSettings };
+export type {
+	PluginEvent,
+	PluginInfo,
+	PluginAction,
+	PluginActionUI,
+	ModuleSettingDef,
+	ModuleSettingValues,
+	Schema,
+	DeviceSettings,
+};
 
 /** Metadata a module folder declares in its `manifest.json`. */
 export interface PluginManifest {
@@ -75,6 +86,11 @@ export interface DesktopModule {
 	stopDevice(): Promise<void>;
 	/** Full teardown of the device link (Disconnect button). */
 	disconnect(): Promise<void>;
+	/**
+	 * Apply the user's values for this module's declared `info.settings`. Called on
+	 * startup with stored values and again whenever one changes.
+	 */
+	applySettings?(values: ModuleSettingValues): void | Promise<void>;
 }
 
 /** A module file default-exports a factory taking its context + parsed manifest. */
@@ -124,6 +140,12 @@ export abstract class PluginBase {
 	isAvailable(): boolean {
 		return true;
 	}
+	/** Settings this module contributes to the app's Settings screen. */
+	getSettings(): ModuleSettingDef[] {
+		return [];
+	}
+	/** Receive the user's values for `getSettings()`. */
+	onSettingsChanged(_values: ModuleSettingValues): void {}
 }
 
 /** Adapt a `PluginBase` instance + its manifest into a `DesktopModule`. */
@@ -140,6 +162,7 @@ export function pluginToModule(instance: PluginBase, manifest: PluginManifest): 
 		// Legacy plugins are all desktop-initiated (serial port / local backend).
 		connectKind: "initiate",
 		isAvailable: instance.isAvailable(),
+		settings: instance.getSettings(),
 		actions: routes.map((r) => ({
 			method: r.method,
 			path: r.path,
@@ -165,5 +188,6 @@ export function pluginToModule(instance: PluginBase, manifest: PluginManifest): 
 		respondToRead: (s, c, data) => instance.onRespondToRead(s, c, new Uint8Array(data)),
 		stopDevice: () => instance.onDisconnect(),
 		disconnect: () => instance.onDisconnect(),
+		applySettings: (values) => instance.onSettingsChanged(values),
 	};
 }
