@@ -52,6 +52,7 @@ class UsbBlePlugin extends PluginBase {
 	private pendingRequests = new Map<string, PendingRequest>();
 	private pythonBackendPath: string;
 	private bridgeBinaryPath: string;
+	private exitGuard: (() => void) | null = null;
 	private isConnecting = false;
 	private isUploading = false;
 	private requestIdCounter = 0;
@@ -276,10 +277,22 @@ class UsbBlePlugin extends PluginBase {
 			}
 			this.ctx.log(`Starting BLE bridge: ${backend.cmd}`);
 
+			// stdin is piped and never written to: the bridge watches it for EOF and exits
+			// when this process dies. Quitting the app never runs deselect, and an orphaned
+			// bridge would hold port 8766 against the next launch.
 			this.pythonProcess = spawn(backend.cmd, backend.args, {
 				cwd: backend.cwd,
-				stdio: ["ignore", "pipe", "pipe"],
+				stdio: ["pipe", "pipe", "pipe"],
 			});
+
+			this.exitGuard = () => {
+				try {
+					this.pythonProcess?.kill();
+				} catch {
+					/* best effort */
+				}
+			};
+			process.once("exit", this.exitGuard);
 
 			this.pythonProcess.stdout?.on("data", (data: Buffer) => {
 				for (const line of data.toString().trim().split("\n")) this.ctx.log(`[Python] ${line}`);
@@ -289,6 +302,7 @@ class UsbBlePlugin extends PluginBase {
 			});
 			this.pythonProcess.on("exit", (code) => {
 				this.ctx.log(`Python backend exited with code ${code}`);
+				this.clearExitGuard();
 				this.pythonProcess = null;
 				if (this.pythonWs) {
 					this.pythonWs.close();
@@ -420,7 +434,14 @@ class UsbBlePlugin extends PluginBase {
 		});
 	}
 
+	private clearExitGuard(): void {
+		if (!this.exitGuard) return;
+		process.off("exit", this.exitGuard);
+		this.exitGuard = null;
+	}
+
 	private async stopPythonBackend(): Promise<void> {
+		this.clearExitGuard();
 		if (this.pythonWs) {
 			try {
 				this.pythonWs.close();

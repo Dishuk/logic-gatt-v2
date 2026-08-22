@@ -374,7 +374,17 @@ async def main():
             loop.add_signal_handler(signal.SIGINT, shutdown)
             loop.add_signal_handler(signal.SIGTERM, shutdown)
 
+        # Exit when the parent closes stdin. Killing the desktop app does not reliably
+        # reap this child, and an orphan holds the port against the next launch.
+        async def watch_parent():
+            await asyncio.to_thread(sys.stdin.buffer.read, 1)
+            log.info("Parent closed stdin — shutting down")
+            stop_event.set()
+
+        watcher = asyncio.create_task(watch_parent())
+
         await stop_event.wait()
+        watcher.cancel()
 
     # Cleanup
     await ble_server.stop_advertising()
