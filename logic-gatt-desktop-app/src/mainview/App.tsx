@@ -60,21 +60,6 @@ export function App() {
     loadPresetList()
   }, [])
 
-  // Mirror the transport asymmetry: the phone initiates, but either side can drop.
-  // If the active executor (phone) hangs up, fully end the desktop session (drop the
-  // link, not just Stop) so the UI returns to "Connect Device" rather than pointing
-  // at a dead peer.
-  const { port, handleDisconnect } = transport
-  useEffect(() => {
-    const off = onConnectionEvent((e) => {
-      if (e.type === 'peer-disconnected' && port) {
-        deviceLogger.log('Phone disconnected — ending session')
-        handleDisconnect()
-      }
-    })
-    return off
-  }, [port, handleDisconnect, deviceLogger.log])
-
   // Resizable split between the Services (left) and Code Editor (right) panels.
   const [leftWidthPct, setLeftWidthPct] = useState(50)
   const panelsRef = useRef<HTMLDivElement>(null)
@@ -107,6 +92,31 @@ export function App() {
       setVariables: project.setVariables,
     })
   }
+
+  // The phone can drop out (sleep, Wi-Fi blip) and dial back in. Keep the Wi-Fi server
+  // listening across the gap — stop the device, then resume it when the phone returns —
+  // instead of dropping the link, which would leave nothing to reconnect to.
+  const { port, running, handleStop } = transport
+  const resumeOnReconnect = useRef(false)
+  const uploadRef = useRef(handleUpload)
+  useEffect(() => {
+    uploadRef.current = handleUpload
+  })
+  useEffect(() => {
+    const off = onConnectionEvent(e => {
+      if (!port) return
+      if (e.type === 'peer-disconnected') {
+        resumeOnReconnect.current = running
+        deviceLogger.log('Phone disconnected — link kept open, waiting for it to reconnect')
+        void handleStop()
+      } else if (e.type === 'peer-connected' && resumeOnReconnect.current) {
+        resumeOnReconnect.current = false
+        deviceLogger.log('Phone reconnected — restarting the device')
+        uploadRef.current()
+      }
+    })
+    return off
+  }, [port, running, handleStop, deviceLogger.log])
 
   const handleLoadExample = async (example: ExampleProject) => {
     try {

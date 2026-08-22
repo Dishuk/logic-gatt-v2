@@ -6,9 +6,13 @@ import { createGattBridge, type BridgeState, type GattBridge } from './gattBridg
 import { ensureBlePermissions } from './permissions';
 import { isPing, parseCommand, type PluginEvent } from './protocol';
 
-export type WsStatus = 'idle' | 'connecting' | 'connected' | 'error';
+export type WsStatus = 'idle' | 'connecting' | 'reconnecting' | 'connected';
 
 const PING_INTERVAL_MS = 2000;
+const RECONNECT_BASE_MS = 1000;
+const RECONNECT_MAX_MS = 10000;
+/** Close code the desktop uses when it stops its server (see `connection-server.ts`). */
+const WS_GOING_AWAY = 1001;
 
 const EMPTY_STATE: BridgeState = {
   advertising: false,
@@ -32,6 +36,12 @@ export function useExecutor(sink: LogSink) {
   const bridgeRef = useRef<GattBridge | null>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const seqRef = useRef(0);
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attemptsRef = useRef(0);
+  /** True between a user Connect and a user Disconnect — gates automatic retries. */
+  const wantConnectedRef = useRef(false);
+  /** Set below; lets the retry timer re-enter the opener without a circular dep. */
+  const openSocketRef = useRef<(target: string) => void>(() => {});
 
   // WebSocket/transport lines (console + UI panel, not mirrored to desktop).
   const log = useMemo(() => createLogger('ws', sink), [sink]);
@@ -105,40 +115,64 @@ export function useExecutor(sink: LogSink) {
     ws.send(JSON.stringify({ type: 'ping', seq, t: Date.now() }));
   }, []);
 
-  const disconnect = useCallback(() => {
-    stopPing();
-    wsRef.current?.close();
-    wsRef.current = null;
-    setStatus('idle');
-  }, [stopPing]);
+  const clearReconnect = useCallback(() => {
+    if (reconnectRef.current) {
+      clearTimeout(reconnectRef.current);
+      reconnectRef.current = null;
+    }
+  }, []);
 
-  const connect = useCallback(
+  /** Detach handlers before closing so a late close/error can't drive state or retries. */
+  const closeSocket = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws) return;
+    ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+    try {
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+    wsRef.current = null;
+  }, []);
+
+  const disconnect = useCallback(() => {
+    wantConnectedRef.current = false;
+    attemptsRef.current = 0;
+    clearReconnect();
+    stopPing();
+    closeSocket();
+    setStatus('idle');
+  }, [clearReconnect, closeSocket, stopPing]);
+
+  const scheduleReconnect = useCallback(
     (target: string) => {
-      // Tear down any existing socket first. Detach its handlers before closing so a
-      // late close/error from the old socket can't stop the new ping or reset status.
+      if (!wantConnectedRef.current) return;
+      const delay = Math.min(RECONNECT_BASE_MS * 2 ** attemptsRef.current, RECONNECT_MAX_MS);
+      attemptsRef.current += 1;
+      setStatus('reconnecting');
+      log.info(`reconnecting in ${(delay / 1000).toFixed(0)}s (attempt ${attemptsRef.current})`);
+      reconnectRef.current = setTimeout(() => {
+        reconnectRef.current = null;
+        if (wantConnectedRef.current) openSocketRef.current(target);
+      }, delay);
+    },
+    [log],
+  );
+
+  const openSocket = useCallback(
+    (target: string) => {
       stopPing();
-      const prev = wsRef.current;
-      if (prev) {
-        prev.onopen = prev.onmessage = prev.onerror = prev.onclose = null;
-        try {
-          prev.close();
-        } catch {
-          /* ignore */
-        }
-      }
+      closeSocket();
       seqRef.current = 0;
       setUrl(target);
-      setStatus('connecting');
+      setStatus((s) => (s === 'reconnecting' ? s : 'connecting'));
       log.info(`connecting ${target}`);
-
-      // Prompt for BLE permission up front so it's granted before the desktop
-      // pushes a schema. Best-effort — the bridge re-checks and surfaces failures.
-      void ensureBlePermissions().catch((err) => log.warn(`ble permission: ${errorMessage(err)}`));
 
       const ws = new WebSocket(target);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        attemptsRef.current = 0;
         setStatus('connected');
         log.info('connected');
         pingRef.current = setInterval(() => sendPing(), PING_INTERVAL_MS);
@@ -182,24 +216,50 @@ export function useExecutor(sink: LogSink) {
         log.warn(`recv (ignored) ${raw}`);
       };
 
+      // Status is left to onclose, which always follows and decides retry vs idle.
       ws.onerror = (e) => {
-        setStatus('error');
         const reason = (e as unknown as { message?: string }).message;
         log.error(reason ? `ws error: ${reason}` : 'ws error');
       };
 
       ws.onclose = (e) => {
         stopPing();
-        setStatus('idle');
         const ce = e as unknown as { code?: number; reason?: string };
         const detail = ce.code != null ? ` (${ce.code}${ce.reason ? ` ${ce.reason}` : ''})` : '';
         // 1000 = normal, 1005 = no status (clean local close); anything else is unexpected.
         const clean = ce.code == null || ce.code === 1000 || ce.code === 1005;
         (clean ? log.info : log.warn)(`closed${detail}`);
+        // 1001 is the desktop shutting its server down on purpose — nothing to retry.
+        if (ce.code === WS_GOING_AWAY) {
+          wantConnectedRef.current = false;
+          log.info('desktop ended the session');
+        }
+        if (wantConnectedRef.current) scheduleReconnect(target);
+        else setStatus('idle');
       };
     },
-    [log, sendPing, stopPing, refreshLive],
+    [closeSocket, log, scheduleReconnect, sendPing, stopPing, refreshLive],
   );
+
+  useEffect(() => {
+    openSocketRef.current = openSocket;
+  }, [openSocket]);
+
+  const connect = useCallback(
+    (target: string) => {
+      wantConnectedRef.current = true;
+      attemptsRef.current = 0;
+      clearReconnect();
+      // Prompt for BLE permission up front so it's granted before the desktop
+      // pushes a schema. Best-effort — the bridge re-checks and surfaces failures.
+      void ensureBlePermissions().catch((err) => log.warn(`ble permission: ${errorMessage(err)}`));
+      openSocket(target);
+    },
+    [clearReconnect, log, openSocket],
+  );
+
+  // Drop a pending retry if the screen goes away.
+  useEffect(() => clearReconnect, [clearReconnect]);
 
   // Re-request permissions and restart advertising for the loaded schema.
   const retryAdvertising = useCallback(async () => {

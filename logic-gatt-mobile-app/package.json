@@ -12,6 +12,7 @@
     "expo-font": "~57.0.1",
     "expo-gatt-server": "github:Dishuk/expo-gatt-server#a85732de5f753f751452db3bae91cdb4ac6e56dc",
     "expo-image": "~57.0.1",
+    "expo-keep-awake": "~57.0.1",
     "expo-linking": "~57.0.3",
     "expo-router": "~57.0.7",
     "expo-splash-screen": "~57.0.4",
