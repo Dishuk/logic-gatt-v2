@@ -6,3 +6,4 @@
 [tools]
 node = "lts"    # mobile app (Expo / npm)
 bun = "latest"  # desktop app (Electrobun)
+uv = "latest"   # usb-ble Python bridge (also fetches the pinned CPython)

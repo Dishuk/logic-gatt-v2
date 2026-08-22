@@ -7,6 +7,10 @@ dist/
 artifacts/
 *.tsbuildinfo
 
+# usb-ble Python bridge: frozen per-OS binary + bytecode
+src/bun/modules/plugins/usb-ble/bin/
+__pycache__/
+
 # Test coverage
 coverage/
 
