@@ -11,6 +11,7 @@
  * host forwards to the webview as `deviceEvent`.
  */
 
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -39,6 +40,29 @@ export class ModuleRegistry {
 	/** Register a built-in module the host constructs directly (e.g. mobile). */
 	register(mod: DesktopModule): void {
 		this.modules.set(mod.info.id, mod);
+	}
+
+	/**
+	 * Register a module the host imports statically. Shipped builds contain no `.ts`
+	 * on disk, so bundled plugins must come through here rather than `loadFromDir`.
+	 * `moduleDir` still points at the plugin's on-disk assets (binaries, data files).
+	 */
+	async registerBuiltin(factory: ModuleFactory, manifest: PluginManifest, moduleDir: string): Promise<void> {
+		if (this.modules.has(manifest.id)) throw new Error(`duplicate module id "${manifest.id}"`);
+		const instance = await factory(this.makeContext(manifest, moduleDir), manifest);
+		this.modules.set(manifest.id, instance);
+	}
+
+	private makeContext(manifest: PluginManifest, moduleDir: string): ModuleContext {
+		return {
+			moduleId: manifest.id,
+			moduleDir,
+			broadcast: (event) => this.deps.broadcast(event),
+			log: (msg) => {
+				console.log(`[${manifest.id}] ${msg}`);
+				this.deps.broadcast({ type: "log", message: `[${manifest.id}] ${msg}` });
+			},
+		};
 	}
 
 	/** Scan `dir` and dynamically import every subfolder that declares itself properly. */
@@ -74,25 +98,19 @@ export class ModuleRegistry {
 			throw new Error(`duplicate module id "${manifest.id}"`);
 		}
 
-		// Bun imports .ts directly; a shipped build may provide index.js instead.
-		const entry = path.join(moduleDir, "index.ts");
+		// Prefer index.js (shipped/compiled); fall back to index.ts, which Bun imports directly.
+		const entry = ["index.js", "index.ts"]
+			.map((f) => path.join(moduleDir, f))
+			.find((f) => existsSync(f));
+		if (!entry) throw new Error(`"${manifest.id}" has no index.js or index.ts`);
+
 		const mod = (await import(pathToFileURL(entry).href)) as { default?: ModuleFactory };
 		const factory = mod.default;
 		if (typeof factory !== "function") {
 			throw new Error(`"${manifest.id}" must default-export a ModuleFactory`);
 		}
 
-		const ctx: ModuleContext = {
-			moduleId: manifest.id,
-			moduleDir,
-			broadcast: (event) => this.deps.broadcast(event),
-			log: (msg) => {
-				console.log(`[${manifest.id}] ${msg}`);
-				this.deps.broadcast({ type: "log", message: `[${manifest.id}] ${msg}` });
-			},
-		};
-
-		const instance = await factory(ctx, manifest);
+		const instance = await factory(this.makeContext(manifest, moduleDir), manifest);
 		this.modules.set(manifest.id, instance);
 		console.log(`[modules] loaded ${manifest.id} (${manifest.name} v${manifest.version})`);
 	}

@@ -1,10 +1,16 @@
 import { BrowserWindow, BrowserView, Updater, Utils, Screen } from "electrobun/bun";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ConnectionEvent, DesktopRPCSchema } from "../shared/rpc";
 import type { PluginEvent } from "../shared/wire";
 import { createConnectionServer } from "./connection-server";
 import { ModuleRegistry } from "./modules/registry";
 import { createMobileModule } from "./modules/mobile";
+import usbBleFactory from "./modules/plugins/usb-ble/index";
+import usbBleManifest from "./modules/plugins/usb-ble/manifest.json";
+import bleUartFactory from "./modules/plugins/ble-uart/index";
+import bleUartManifest from "./modules/plugins/ble-uart/manifest.json";
+import type { PluginManifest } from "./modules/sdk";
 import { initLogger, getLogDir, writeLog } from "./logger";
 import { applyWindowsDarkTitleBar } from "./windows-dark-titlebar";
 import { applyWindowsWindowIcon } from "./windows-window-icon";
@@ -67,8 +73,21 @@ function activeOrThrow() {
 	if (!mod) throw new Error("No active transport — select a device first.");
 	return mod;
 }
+// Built-in plugins are imported statically so they survive bundling, but their on-disk
+// assets (the usb-ble bridge binary) still resolve relative to this file — which lands
+// at Resources/app/bun/index.js in a shipped build, mirroring the source layout.
 const pluginsDir = fileURLToPath(new URL("./modules/plugins/", import.meta.url));
-await registry.loadFromDir(pluginsDir);
+for (const [factory, manifest] of [
+	[usbBleFactory, usbBleManifest],
+	[bleUartFactory, bleUartManifest],
+] as const) {
+	const m = manifest as PluginManifest;
+	try {
+		await registry.registerBuiltin(factory, m, path.join(pluginsDir, m.id));
+	} catch (err) {
+		console.error(`[modules] failed to register ${m.id}:`, err);
+	}
+}
 
 // RPC handlers (webview -> bun). Transport requests are serialized to the phone as
 // PluginCommands; `getConnectionInfo` drives the QR/status; modules reflect the phone.

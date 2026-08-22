@@ -11,6 +11,10 @@ export default {
 		copy: {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets": "views/mainview/assets",
+			// Frozen usb-ble bridge. Mirrors the source layout so the same
+			// `new URL("./modules/plugins/", import.meta.url)` resolves in dev and shipped.
+			// Built per-OS by `make usb-ble-bridge`; absent until then.
+			"src/bun/modules/plugins/usb-ble/bin": "bun/modules/plugins/usb-ble/bin",
 		},
 		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
 		watchIgnore: ["dist/**"],
