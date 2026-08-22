@@ -15,7 +15,9 @@ Usage:
 import asyncio
 import json
 import logging
+import os
 import signal
+import stat
 import sys
 from typing import Any
 from uuid import UUID
@@ -105,7 +107,11 @@ class BleGattServer:
             try:
                 await asyncio.wait_for(self.server.add_new_service(service_uuid), timeout=5.0)
             except asyncio.TimeoutError:
-                raise RuntimeError(f"Timeout adding service {service_uuid}")
+                raise RuntimeError(
+                    f"Timed out adding service {service_uuid}. This usually means no "
+                    "Bluetooth adapter is available, or it does not support BLE "
+                    "peripheral mode."
+                )
             log.info(f"[BLE] Added service: {service_uuid}")
 
             for char_def in svc_def.get("characteristics", []):
@@ -344,6 +350,14 @@ class WebSocketHandler:
             log.info(f"[WS] Client disconnected: {remote}")
 
 
+def stdin_is_pipe() -> bool:
+    """True when stdin is a pipe, i.e. held open by a parent process."""
+    try:
+        return stat.S_ISFIFO(os.fstat(sys.stdin.fileno()).st_mode)
+    except (OSError, ValueError):
+        return False
+
+
 async def main():
     """Main entry point."""
     log.info("USB BLE Backend starting...")
@@ -376,15 +390,22 @@ async def main():
 
         # Exit when the parent closes stdin. Killing the desktop app does not reliably
         # reap this child, and an orphan holds the port against the next launch.
+        # Only when stdin is a pipe: a tty or /dev/null reads EOF straight away, which
+        # would shut the bridge down the moment it is run by hand.
         async def watch_parent():
             await asyncio.to_thread(sys.stdin.buffer.read, 1)
             log.info("Parent closed stdin — shutting down")
             stop_event.set()
 
-        watcher = asyncio.create_task(watch_parent())
+        watcher = None
+        if stdin_is_pipe():
+            watcher = asyncio.create_task(watch_parent())
+        else:
+            log.info("stdin is not a pipe — parent-exit watch disabled")
 
         await stop_event.wait()
-        watcher.cancel()
+        if watcher is not None:
+            watcher.cancel()
 
     # Cleanup
     await ble_server.stop_advertising()
