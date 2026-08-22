@@ -20,8 +20,9 @@ export interface WorkerResponse {
   error: string | null
 }
 
-// Block dangerous globals
-const BLOCKED_GLOBALS = [
+// Identifiers shadowed as function parameters so user code can't name them directly.
+// `globalThis`/`self`/`Function` are the escape hatches that made the rest pointless.
+export const BLOCKED_GLOBALS = [
   'window',
   'document',
   'localStorage',
@@ -30,16 +31,20 @@ const BLOCKED_GLOBALS = [
   'XMLHttpRequest',
   'WebSocket',
   'importScripts',
-  'eval',
   'indexedDB',
   'caches',
   'navigator',
   'Notification',
   'ServiceWorker',
   'SharedWorker',
+  'globalThis',
+  'self',
+  'Function',
+  'Worker',
+  'postMessage',
 ]
 
-const blockedProxy = new Proxy(
+export const blockedProxy = new Proxy(
   {},
   {
     get(_target, prop) {
@@ -51,8 +56,41 @@ const blockedProxy = new Proxy(
   }
 )
 
-// Freeze the proxy to prevent modifications
 Object.freeze(blockedProxy)
+
+// Shadowing alone leaves `({}).constructor.constructor('return globalThis')()` open, which
+// rebuilds a function in global scope and reaches every blocked name. Capture the real
+// constructors first, then poison the `.constructor` route on every function prototype.
+const RealFunction = Function
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+const GeneratorFunction = Object.getPrototypeOf(function* () {}).constructor
+const AsyncGeneratorFunction = Object.getPrototypeOf(async function* () {}).constructor
+
+export function sealEscapeHatches(): void {
+  const deny = (name: string) => () => {
+    throw new Error(`Access to '${name}' is blocked in sandbox`)
+  }
+  for (const ctor of [RealFunction, AsyncFunction, GeneratorFunction, AsyncGeneratorFunction]) {
+    try {
+      Object.defineProperty(ctor.prototype, 'constructor', {
+        value: deny('Function'),
+        writable: false,
+        configurable: false,
+      })
+    } catch {
+      /* already sealed */
+    }
+  }
+  // `eval` can't be a strict-mode parameter name, so it can't be shadowed like the
+  // rest. Replace the intrinsic instead — that defeats indirect eval too.
+  try {
+    Object.defineProperty(globalThis, 'eval', { value: deny('eval'), writable: false, configurable: false })
+  } catch {
+    /* already sealed */
+  }
+}
+
+sealEscapeHatches()
 
 // ─── Binary Reader/Writer Utilities ─────────────────────────────────────────
 
@@ -452,13 +490,6 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   }
 
   try {
-    // Build blocked globals object
-    const blocked: Record<string, unknown> = {}
-    for (const name of BLOCKED_GLOBALS) {
-      blocked[name] = blockedProxy
-    }
-
-    // Create function with blocked globals injected
     const argNames = ['input', 'ctx', 'console', 'reader', 'writer', ...BLOCKED_GLOBALS]
     const argValues = [
       new Uint8Array(input),
@@ -469,7 +500,9 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
       ...BLOCKED_GLOBALS.map(() => blockedProxy),
     ]
 
-    const runner = new Function(...argNames, body)
+    // Strict mode: otherwise a sloppy-mode call binds `this` to the global scope,
+    // handing user code `this.fetch` regardless of what the parameters shadow.
+    const runner = RealFunction(...argNames, `"use strict";\n${body}`)
     const result = runner(...argValues)
 
     let resultArray: number[] | null = null

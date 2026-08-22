@@ -247,7 +247,13 @@ export function FunctionApiReference({ onClose, theme }: FunctionApiReferencePro
               <code>window</code> <code>document</code> <code>fetch</code> <code>XMLHttpRequest</code>{' '}
               <code>WebSocket</code> <code>localStorage</code> <code>sessionStorage</code> <code>indexedDB</code>{' '}
               <code>caches</code> <code>navigator</code> <code>eval</code> <code>importScripts</code>{' '}
-              <code>Notification</code> <code>ServiceWorker</code> <code>SharedWorker</code> — accessing any throws.
+              <code>Notification</code> <code>ServiceWorker</code> <code>SharedWorker</code> <code>globalThis</code>{' '}
+              <code>self</code> <code>Function</code> <code>Worker</code> <code>postMessage</code> — accessing any
+              throws.
+            </p>
+            <p className="api-blocked">
+              Functions run in a worker with these names blocked and the <code>Function</code> constructor sealed,
+              but this is a guardrail against mistakes, not a security boundary — only run project files you trust.
             </p>
           </section>
 
