@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Unbundled deps staged into the app bundle (scripts/stage-external-deps.ts)
+vendor/
+
 # Electrobun / Vite build output
 build/
 dist/
