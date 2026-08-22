@@ -172,7 +172,10 @@ export function TopBar({ transport, project, logger, onUpload, examples = [], on
                   <li>
                     Use <code>console.log()</code> in functions : output appears in Functions tab of the terminal
                   </li>
-                  <li>Variables persist across scenario executions until device reset</li>
+                  <li>
+                    Variables hold live state: <code>ctx.setVar()</code> overwrites the value shown in the
+                    <em> Variables</em> tab, and Stop does not restore it — re-enter a value there to reset it
+                  </li>
                   <li>Use Tags on services/characteristics for easier identification in scenarios</li>
                   <li>Import/Export saves your entire project as JSON</li>
                 </ul>
