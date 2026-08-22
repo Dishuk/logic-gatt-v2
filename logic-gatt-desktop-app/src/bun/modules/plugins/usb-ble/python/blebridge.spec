@@ -10,25 +10,33 @@ produces a binary that builds fine and fails on first use.
 
 import sys
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 
 hidden = []
+binaries = []
 for pkg in ("bless", "bleak", "websockets"):
     hidden += collect_submodules(pkg)
 
 if sys.platform == "win32":
-    for pkg in ("bleak_winrt", "winrt", "pysetupdi", "win32more"):
-        try:
-            hidden += collect_submodules(pkg)
-        except Exception:
-            pass
+    platform_pkgs = ("bleak_winrt", "winrt", "pysetupdi", "win32more")
 elif sys.platform.startswith("linux"):
-    hidden += collect_submodules("dbus_next")
+    # bless uses dbus-next, bleak uses dbus-fast — both are needed, and dbus-fast
+    # ships compiled extensions that must be collected as binaries.
+    platform_pkgs = ("dbus_next", "dbus_fast")
+else:
+    platform_pkgs = ()
+
+for pkg in platform_pkgs:
+    try:
+        hidden += collect_submodules(pkg)
+        binaries += collect_dynamic_libs(pkg)
+    except Exception:
+        pass
 
 a = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=[],
     hiddenimports=hidden,
     hookspath=[],
