@@ -79,7 +79,7 @@ export class GattBridge {
   private advertising = false;
   private advError: string | null = null;
   private readonly centrals = new Set<string>();
-  /** Pending reads keyed by `serviceUuid|charUuid`; newest is answered first. */
+  /** Pending reads keyed by `serviceUuid|charUuid`; answered oldest-first (FIFO). */
   private readonly pendingReads = new Map<string, PendingRead[]>();
   /** Fast lookup of characteristics declared by the active schema. */
   private readonly knownChars = new Set<string>();
@@ -306,7 +306,9 @@ export class GattBridge {
 
     const key = charKey(serviceUuid, charUuid);
     const list = this.pendingReads.get(key);
-    const pending = list?.pop(); // newest pending read
+    // FIFO: the desktop answers reads in arrival order, so popping the newest would
+    // pair this payload with a later request and swap the two centrals' responses.
+    const pending = list?.shift();
     if (list && list.length === 0) this.pendingReads.delete(key);
 
     if (!pending) {
