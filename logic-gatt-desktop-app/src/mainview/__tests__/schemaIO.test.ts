@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import { exportProject, importProject, DEFAULT_DEVICE_SETTINGS, type ProjectData } from '../lib/schemaIO'
 import { validateSchema } from '../lib/validation'
-import { buildContext, executeFunctionSync } from '../lib/executor'
+import { runSandboxed } from '../lib/sandbox'
 import defaultProjectJson from './fixtures/defaultProject.json'
 import heartRateMonitorJson from './fixtures/heartRateMonitor.json'
 import { TriggerKind, StepKind } from '../types'
@@ -632,11 +632,6 @@ describe('example schemas', () => {
         expect(fn).toBeDefined()
         if (!fn) continue
 
-        const ctx = buildContext(
-          project.variables,
-          () => {},
-          () => {}
-        )
         const inputBytes = test.inputHex
           ? new Uint8Array(
               test.inputHex
@@ -646,7 +641,13 @@ describe('example schemas', () => {
             )
           : new Uint8Array()
 
-        const result = executeFunctionSync(fn, inputBytes, ctx)
+        const res = runSandboxed({
+          body: fn.body,
+          input: Array.from(inputBytes),
+          variables: project.variables.map(v => ({ name: v.name, type: v.type, value: v.initialValue })),
+          scenarioNames: [],
+        })
+        const result = res.result ? new Uint8Array(res.result) : null
 
         const expectedBytes = test.expectedHex
           ? new Uint8Array(
@@ -720,11 +721,6 @@ describe('example schemas', () => {
         expect(fn).toBeDefined()
         if (!fn) continue
 
-        const ctx = buildContext(
-          project.variables,
-          () => {},
-          () => {}
-        )
         const inputBytes = test.inputHex
           ? new Uint8Array(
               test.inputHex
@@ -734,7 +730,13 @@ describe('example schemas', () => {
             )
           : new Uint8Array()
 
-        const result = executeFunctionSync(fn, inputBytes, ctx)
+        const res = runSandboxed({
+          body: fn.body,
+          input: Array.from(inputBytes),
+          variables: project.variables.map(v => ({ name: v.name, type: v.type, value: v.initialValue })),
+          scenarioNames: [],
+        })
+        const result = res.result ? new Uint8Array(res.result) : null
 
         const expectedBytes = test.expectedHex
           ? new Uint8Array(

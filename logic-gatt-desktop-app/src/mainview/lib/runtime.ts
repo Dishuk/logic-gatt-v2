@@ -76,11 +76,7 @@ export function startRuntime(deps: RuntimeDeps): {
     const pendingScenarios: string[] = []
     let responded = false
 
-    const ctx = {
-      log: fnLog,
-      getVar: () => undefined,
-      setVar: () => {},
-    }
+    const ctx = { log: fnLog }
 
     for (const step of steps) {
       if (stopped) break
