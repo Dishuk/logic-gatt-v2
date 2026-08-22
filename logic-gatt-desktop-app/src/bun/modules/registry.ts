@@ -86,7 +86,15 @@ export class ModuleRegistry {
 
 	private async loadOne(moduleDir: string): Promise<void> {
 		const manifestPath = path.join(moduleDir, "manifest.json");
-		const manifest = JSON.parse(await fs.readFile(manifestPath, "utf-8")) as PluginManifest;
+		let rawManifest: string;
+		try {
+			rawManifest = await fs.readFile(manifestPath, "utf-8");
+		} catch {
+			// Not a module directory. A shipped build copies only a module's assets (e.g.
+			// usb-ble/bin), leaving a manifest-less folder here.
+			return;
+		}
+		const manifest = JSON.parse(rawManifest) as PluginManifest;
 
 		if (!manifest.id || !manifest.name || !manifest.version) {
 			throw new Error("manifest missing id/name/version");
@@ -95,7 +103,8 @@ export class ModuleRegistry {
 			throw new Error(`apiVersion ${manifest.apiVersion} != host ${MODULE_API_VERSION}`);
 		}
 		if (this.modules.has(manifest.id)) {
-			throw new Error(`duplicate module id "${manifest.id}"`);
+			console.log(`[modules] ${manifest.id} already registered — skipping folder copy`);
+			return;
 		}
 
 		// Prefer index.js (shipped/compiled); fall back to index.ts, which Bun imports directly.

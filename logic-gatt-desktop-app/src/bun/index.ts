@@ -8,8 +8,6 @@ import { ModuleRegistry } from "./modules/registry";
 import { createMobileModule } from "./modules/mobile";
 import usbBleFactory from "./modules/plugins/usb-ble/index";
 import usbBleManifest from "./modules/plugins/usb-ble/manifest.json";
-import bleUartFactory from "./modules/plugins/ble-uart/index";
-import bleUartManifest from "./modules/plugins/ble-uart/manifest.json";
 import type { PluginManifest } from "./modules/sdk";
 import { initLogger, getLogDir, writeLog } from "./logger";
 import { applyWindowsDarkTitleBar } from "./windows-dark-titlebar";
@@ -73,21 +71,20 @@ function activeOrThrow() {
 	if (!mod) throw new Error("No active transport — select a device first.");
 	return mod;
 }
-// Built-in plugins are imported statically so they survive bundling, but their on-disk
-// assets (the usb-ble bridge binary) still resolve relative to this file — which lands
-// at Resources/app/bun/index.js in a shipped build, mirroring the source layout.
+// usb-ble is imported statically so it survives bundling; its on-disk assets (the bridge
+// binary) still resolve relative to this file, which lands at Resources/app/bun/index.js
+// in a shipped build, mirroring the source layout.
+//
+// ble-uart is deliberately NOT static: it imports `serialport`, and bundling that native
+// module produces a build that hangs before the window is created. The folder scan below
+// loads it from disk instead, which is why it stays dev-only until that is solved.
 const pluginsDir = fileURLToPath(new URL("./modules/plugins/", import.meta.url));
-for (const [factory, manifest] of [
-	[usbBleFactory, usbBleManifest],
-	[bleUartFactory, bleUartManifest],
-] as const) {
-	const m = manifest as PluginManifest;
-	try {
-		await registry.registerBuiltin(factory, m, path.join(pluginsDir, m.id));
-	} catch (err) {
-		console.error(`[modules] failed to register ${m.id}:`, err);
-	}
+try {
+	await registry.registerBuiltin(usbBleFactory, usbBleManifest as PluginManifest, path.join(pluginsDir, "usb-ble"));
+} catch (err) {
+	console.error("[modules] failed to register usb-ble:", err);
 }
+await registry.loadFromDir(pluginsDir);
 
 // RPC handlers (webview -> bun). Transport requests are serialized to the phone as
 // PluginCommands; `getConnectionInfo` drives the QR/status; modules reflect the phone.
