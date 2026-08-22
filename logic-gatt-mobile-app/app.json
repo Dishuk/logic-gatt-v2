@@ -42,10 +42,6 @@
       ],
       "package": "com.dishuk.logicgatt.mobile"
     },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
-    },
     "plugins": [
       "expo-router",
       [
