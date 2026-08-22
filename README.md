@@ -58,6 +58,17 @@ Runtime flow:
 All device behavior is decided on the desktop; the phone only carries it out. This mirrors
 the original app, where logic ran in the browser and an ESP32/adapter was the peripheral.
 
+### Alternative radios
+
+The phone needs no extra setup and is the default. Two optional transport modules can take
+its place, selected from the desktop app's transport picker:
+
+- **usb-ble** — the PC's own Bluetooth adapter, driven by a bundled bridge binary. Windows
+  and Linux only, and only present when built with `make usb-ble-bridge`; the module reports
+  itself unavailable otherwise. See
+  [its README](logic-gatt-desktop-app/src/bun/modules/plugins/usb-ble/python/README.md).
+- **ble-uart** — an MCU (ESP32, nRF52) attached over USB serial, acting as the peripheral.
+
 ## Repository structure
 
 ```
@@ -101,6 +112,7 @@ server and shows a QR code; the phone connects by scanning it or via mDNS.
 | `make test` | Run the desktop Vitest suite |
 | `make build` | Build the desktop canary installer ZIP (`logic-gatt-desktop-app/artifacts/canary-win-x64-LogicGATT-Setup-canary.zip`) |
 | `make gen-theme` | Regenerate desktop `theme.css` from shared tokens |
+| `make usb-ble-bridge` | Freeze the optional usb-ble bridge binary (Windows/Linux; needs [uv](https://docs.astral.sh/uv/)) |
 
 ### Production-like builds
 
