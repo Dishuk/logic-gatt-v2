@@ -25,7 +25,8 @@ export function applyWindowsWindowIcon(windowTitle: string): void {
     const { dlopen, ptr } = require("bun:ffi");
 
     const icoPath = join(tmpdir(), "logicgatt-window-icon.ico");
-    writeFileSync(icoPath, Buffer.from(ICON_ICO_BASE64, "base64"));
+    // Plain Uint8Array: Buffer's ArrayBufferLike doesn't satisfy the writeFileSync typing.
+    writeFileSync(icoPath, new Uint8Array(Buffer.from(ICON_ICO_BASE64, "base64")));
 
     const user32 = dlopen("user32.dll", {
       FindWindowW: { args: ["ptr", "ptr"], returns: "ptr" },

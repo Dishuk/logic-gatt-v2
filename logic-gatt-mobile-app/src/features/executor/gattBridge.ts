@@ -306,8 +306,7 @@ export class GattBridge {
 
     const key = charKey(serviceUuid, charUuid);
     const list = this.pendingReads.get(key);
-    // FIFO: the desktop answers reads in arrival order, so popping the newest would
-    // pair this payload with a later request and swap the two centrals' responses.
+    // FIFO: popping the newest would pair this payload with a later request.
     const pending = list?.shift();
     if (list && list.length === 0) this.pendingReads.delete(key);
 
