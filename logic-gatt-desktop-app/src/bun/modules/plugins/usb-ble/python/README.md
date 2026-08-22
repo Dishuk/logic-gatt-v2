@@ -31,6 +31,9 @@ plugin and by `bun run build:canary`.
 
 PyInstaller cannot cross-compile, so this must be run **on each OS being shipped**.
 
+On Linux the resulting binary is bound to the build machine's glibc, so building on the
+oldest supported distribution (or in a manylinux container) keeps it portable.
+
 ## Development
 
 ```bash

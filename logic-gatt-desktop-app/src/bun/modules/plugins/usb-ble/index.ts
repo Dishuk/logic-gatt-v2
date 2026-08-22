@@ -70,6 +70,14 @@ class UsbBlePlugin extends PluginBase {
 	/** Frozen bridge if present (shipped builds), else the dev venv interpreter + main.py. */
 	private resolveBackendCommand(): { cmd: string; args: string[]; cwd: string } | null {
 		if (fs.existsSync(this.bridgeBinaryPath)) {
+			// Packaging round-trips can drop the exec bit; restore it before spawning.
+			if (process.platform !== "win32") {
+				try {
+					fs.chmodSync(this.bridgeBinaryPath, 0o755);
+				} catch {
+					/* best effort */
+				}
+			}
 			// python/ is not shipped alongside the frozen binary, so anchor cwd to bin/.
 			return { cmd: this.bridgeBinaryPath, args: [], cwd: path.dirname(this.bridgeBinaryPath) };
 		}
