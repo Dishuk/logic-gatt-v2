@@ -32,7 +32,11 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S"
 )
-log = logging.getLogger("ble-backend")
+log = logging.getLogger("ble-adapter")
+
+# The control channel is internal plumbing; its chatter is relayed to the app log,
+# so keep it out of the user-visible stream.
+logging.getLogger("websockets").setLevel(logging.WARNING)
 
 # WebSocket port (8766: 8765 is used by the desktop's mobile Wi-Fi transport)
 WS_PORT = 8766
@@ -98,7 +102,7 @@ class BleGattServer:
         # name_overwrite renames the host's Bluetooth adapter system-wide (registry +
         # adapter restart on Windows), so it is opt-in from the app's Settings screen.
         name_overwrite = bool(settings.get("nameOverwrite", False))
-        log.info(f"[BLE] Creating BlessServer as '{self.device_name}'...")
+        log.info(f"[BLE] Preparing adapter as '{self.device_name}'...")
         if not name_overwrite:
             log.info(
                 "[BLE] Adapter rename disabled — the advertised name is the system "
@@ -217,7 +221,7 @@ class BleGattServer:
         if char:
             char.value = bytearray(data)
         else:
-            log.warning(f"[BLE] Characteristic not found in bless: {char_uuid}")
+            log.warning(f"[BLE] Characteristic not found on the adapter: {char_uuid}")
 
         self.server.update_value(service_uuid, char_uuid)
         log.info(f"[BLE] Notification sent: {char_uuid} data={data.hex()}")
@@ -231,7 +235,7 @@ class BleGattServer:
             if char:
                 char.value = bytearray(data)
             else:
-                log.warning(f"[BLE] Characteristic not found in bless: {char_uuid}")
+                log.warning(f"[BLE] Characteristic not found on the adapter: {char_uuid}")
             # Note: Don't call update_value() here - that sends notifications,
             # which fails on read-only characteristics
         log.info(f"[BLE] Read response updated: {char_uuid} data={data.hex()}")
@@ -289,7 +293,7 @@ class WebSocketHandler:
 
         msg_type = msg.get("type", "")
         request_id = msg.get("requestId", "")
-        log.info(f"[WS] Received: {msg_type} (id={request_id})")
+        log.debug(f"[WS] Received: {msg_type} (id={request_id})")
 
         try:
             if msg_type == "ping":
@@ -314,7 +318,7 @@ class WebSocketHandler:
             elif msg_type == "notify":
                 char_uuid = msg.get("charUuid", "")
                 data = bytes(msg.get("data", []))
-                log.info(f"[WS] Notify request: charUuid='{char_uuid}' data_len={len(data)}")
+                log.debug(f"[WS] Notify request: charUuid='{char_uuid}' data_len={len(data)}")
                 await self.ble.notify(char_uuid, data)
                 await self.send(ws, {"type": "ack", "requestId": request_id})
 
@@ -344,7 +348,7 @@ class WebSocketHandler:
         """Handle WebSocket connection lifecycle."""
         self.clients.add(ws)
         remote = ws.remote_address
-        log.info(f"[WS] Client connected: {remote}")
+        log.debug(f"[WS] Client connected: {remote}")
 
         # Send ready message
         await self.send(ws, {"type": "connected"})
@@ -356,7 +360,7 @@ class WebSocketHandler:
             pass
         finally:
             self.clients.discard(ws)
-            log.info(f"[WS] Client disconnected: {remote}")
+            log.debug(f"[WS] Client disconnected: {remote}")
 
 
 def stdin_is_pipe() -> bool:
@@ -369,8 +373,8 @@ def stdin_is_pipe() -> bool:
 
 async def main():
     """Main entry point."""
-    log.info("USB BLE Backend starting...")
-    log.info("Using real Bluetooth adapter (no mock mode)")
+    log.info("Bluetooth adapter starting...")
+    log.info("Using the real Bluetooth adapter")
 
     # Create BLE server
     ble_server = BleGattServer()
@@ -382,8 +386,8 @@ async def main():
     stop_event = asyncio.Event()
 
     async with websockets.serve(ws_handler.handle_connection, "localhost", WS_PORT):
-        log.info(f"WebSocket server listening on ws://localhost:{WS_PORT}")
-        log.info("Waiting for frontend connection...")
+        log.debug(f"control channel listening on port {WS_PORT}")
+        log.debug("waiting for the app to connect...")
 
         # Wait for shutdown signal
         loop = asyncio.get_event_loop()
@@ -418,7 +422,7 @@ async def main():
 
     # Cleanup
     await ble_server.stop_advertising()
-    log.info("Goodbye!")
+    log.info("Bluetooth adapter stopped")
 
 
 if __name__ == "__main__":

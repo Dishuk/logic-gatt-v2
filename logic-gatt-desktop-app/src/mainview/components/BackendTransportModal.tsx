@@ -180,7 +180,7 @@ function StatusField({
     setLoading('start')
     try {
       await callPluginAction(pluginId, startAction.method, startAction.path)
-      log('Backend started')
+      log(`${label} started`)
       fetchStatus()
     } catch (err) {
       log(`Failed to start: ${err instanceof Error ? err.message : String(err)}`)
@@ -194,7 +194,7 @@ function StatusField({
     setLoading('stop')
     try {
       await callPluginAction(pluginId, stopAction.method, stopAction.path)
-      log('Backend stopped')
+      log(`${label} stopped`)
       setStatus({ running: false })
     } catch (err) {
       log(`Failed to stop: ${err instanceof Error ? err.message : String(err)}`)
@@ -209,7 +209,7 @@ function StatusField({
       <div className="backend-status">
         <span className={`status-indicator ${status?.running ? 'running' : 'stopped'}`} />
         <span>{status?.running ? 'Running' : 'Stopped'}</span>
-        {status?.wsConnected && <span className="ws-connected">(WebSocket connected)</span>}
+        {status?.wsConnected && <span className="ws-connected">(connected)</span>}
       </div>
       <div className="backend-actions">
         {!status?.running && startAction && (
@@ -542,7 +542,7 @@ export function BackendTransportModal({ onConnect, onClose, log }: BackendTransp
             // module, metadata form for hardware modules).
             renderConnectUI(selectedPlugin)
           ) : plugins.length === 0 ? (
-            <div className="no-plugins">No modules available. Start the backend server.</div>
+            <div className="no-plugins">No connection methods are available.</div>
           ) : (
             // Always the first step: choose a connection way (matches the old app).
             // The list is shown even for a single module — selecting a module is what

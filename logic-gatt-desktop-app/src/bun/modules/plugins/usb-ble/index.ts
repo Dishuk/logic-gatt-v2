@@ -102,13 +102,12 @@ class UsbBlePlugin extends PluginBase {
 	}
 
 	async onLoad(): Promise<void> {
-		this.ctx.log("USB BLE plugin loaded");
-		this.ctx.log(`Python backend path: ${this.pythonBackendPath}`);
+		this.ctx.log("PC Bluetooth adapter ready");
 	}
 
 	async onUnload(): Promise<void> {
 		await this.cleanup();
-		this.ctx.log("USB BLE plugin unloaded");
+		this.ctx.log("PC Bluetooth adapter released");
 	}
 
 	// Windows and Linux only — bless has no macOS peripheral backend we ship for.
@@ -123,9 +122,9 @@ class UsbBlePlugin extends PluginBase {
 				id: "overwriteAdapterName",
 				label: "Apply the device name to the Bluetooth adapter",
 				description:
-					"Windows advertises the system Bluetooth name, so the project's Device Name is ignored. " +
-					"Enabling this renames the adapter system-wide (registry + adapter restart), which needs " +
-					"Administrator and persists after the app closes.",
+					"Windows advertises this computer's Bluetooth name, so the project's Device Name is ignored. " +
+					"Enabling this renames the adapter for all Bluetooth use, not just this app — it needs " +
+					"Administrator and stays in effect after the app closes.",
 				type: "boolean",
 				default: false,
 				platforms: ["win32"],
@@ -142,9 +141,9 @@ class UsbBlePlugin extends PluginBase {
 			{
 				method: "GET",
 				path: "/status",
-				label: "Backend Status",
-				description: "Get Python backend process status",
-				ui: { display: "status", fieldId: "backend", fieldLabel: "Python Backend", refreshMs: 2000 },
+				label: "Adapter Status",
+				description: "Whether the Bluetooth adapter is running",
+				ui: { display: "status", fieldId: "backend", fieldLabel: "Bluetooth adapter", refreshMs: 2000 },
 				handler: () => {
 					const isRunning = this.pythonProcess !== null && !this.pythonProcess.killed;
 					const isConnected = this.pythonWs !== null && this.pythonWs.readyState === WebSocket.OPEN;
@@ -154,8 +153,8 @@ class UsbBlePlugin extends PluginBase {
 			{
 				method: "POST",
 				path: "/start-backend",
-				label: "Start Backend",
-				description: "Start the Python BLE backend process",
+				label: "Start Adapter",
+				description: "Start the Bluetooth adapter",
 				ui: { display: "status-start", fieldId: "backend" },
 				handler: async () => {
 					await this.startPythonBackend();
@@ -165,8 +164,8 @@ class UsbBlePlugin extends PluginBase {
 			{
 				method: "POST",
 				path: "/stop-backend",
-				label: "Stop Backend",
-				description: "Stop the Python BLE backend process",
+				label: "Stop Adapter",
+				description: "Stop the Bluetooth adapter",
 				ui: { display: "status-stop", fieldId: "backend" },
 				handler: async () => {
 					await this.stopPythonBackend();
@@ -182,7 +181,6 @@ class UsbBlePlugin extends PluginBase {
 
 		try {
 			if (!this.pythonWs || this.pythonWs.readyState !== WebSocket.OPEN) {
-				this.ctx.log("Starting Python backend...");
 				await this.startPythonBackend();
 			}
 
@@ -197,7 +195,7 @@ class UsbBlePlugin extends PluginBase {
 				})),
 			};
 
-			this.ctx.log("Uploading schema to Python backend...");
+			this.ctx.log("Uploading schema to the Bluetooth adapter…");
 			await this.sendToPython({
 				type: "upload-schema",
 				requestId: this.generateRequestId(),
@@ -209,7 +207,7 @@ class UsbBlePlugin extends PluginBase {
 					nameOverwrite: this.overwriteAdapterName,
 				},
 			});
-			this.ctx.log("Schema uploaded to Python backend");
+			this.ctx.log("Schema uploaded");
 
 			this.ctx.log("Starting BLE advertising...");
 			await this.sendToPython({ type: "start-advertising", requestId: this.generateRequestId() });
@@ -221,7 +219,6 @@ class UsbBlePlugin extends PluginBase {
 
 	async onConnect(): Promise<void> {
 		if (!this.pythonWs || this.pythonWs.readyState !== WebSocket.OPEN) {
-			this.ctx.log("Starting Python backend for connect...");
 			await this.startPythonBackend();
 		}
 		this.ctx.broadcast({ type: "connected" });
@@ -240,7 +237,7 @@ class UsbBlePlugin extends PluginBase {
 
 	async onNotify(serviceUuid: string, charUuid: string, data: Uint8Array): Promise<void> {
 		if (!this.pythonWs || this.pythonWs.readyState !== WebSocket.OPEN) {
-			throw new Error("Python backend not connected");
+			throw new Error("Bluetooth adapter is not connected");
 		}
 		await this.sendToPython({
 			type: "notify",
@@ -253,7 +250,7 @@ class UsbBlePlugin extends PluginBase {
 
 	async onRespondToRead(serviceUuid: string, charUuid: string, data: Uint8Array): Promise<void> {
 		if (!this.pythonWs || this.pythonWs.readyState !== WebSocket.OPEN) {
-			throw new Error("Python backend not connected");
+			throw new Error("Bluetooth adapter is not connected");
 		}
 		await this.sendToPython({
 			type: "respond-to-read",
@@ -284,7 +281,7 @@ class UsbBlePlugin extends PluginBase {
 		}
 
 		if (this.pythonProcess && !this.pythonProcess.killed) {
-			this.ctx.log("Python backend already running");
+			this.ctx.log("Bluetooth adapter already running");
 			if (!this.pythonWs || this.pythonWs.readyState !== WebSocket.OPEN) {
 				await this.connectToPythonWs();
 			}
@@ -297,10 +294,10 @@ class UsbBlePlugin extends PluginBase {
 			const backend = this.resolveBackendCommand();
 			if (!backend) {
 				throw new Error(
-					"BLE bridge not found — build it with `make usb-ble-bridge` (or `make venv` in the plugin's python/ dir for a dev run).",
+					"Bluetooth adapter support is not installed in this build.",
 				);
 			}
-			this.ctx.log(`Starting BLE bridge: ${backend.cmd}`);
+			this.ctx.log("Starting the Bluetooth adapter…");
 
 			// stdin is piped and never written to: the bridge watches it for EOF and exits
 			// when this process dies. Quitting the app never runs deselect, and an orphaned
@@ -322,23 +319,23 @@ class UsbBlePlugin extends PluginBase {
 			// Both streams are tagged the same: Python's logging writes to stderr, so
 			// labelling that as an error would mark every INFO line as a failure.
 			const relay = (data: Buffer) => {
-				for (const line of data.toString().trim().split("\n")) this.ctx.log(`[bridge] ${line}`);
+				for (const line of data.toString().trim().split("\n")) this.ctx.log(`[adapter] ${line}`);
 			};
 			this.pythonProcess.stdout?.on("data", relay);
 			this.pythonProcess.stderr?.on("data", relay);
 			this.pythonProcess.on("exit", (code) => {
-				this.ctx.log(`Python backend exited with code ${code}`);
+				this.ctx.log(code ? `Bluetooth adapter stopped (code ${code})` : "Bluetooth adapter stopped");
 				this.clearExitGuard();
 				this.pythonProcess = null;
 				if (this.pythonWs) {
 					this.pythonWs.close();
 					this.pythonWs = null;
 				}
-				this.clearPendingRequests(new Error("Python backend exited"));
-				this.ctx.broadcast({ type: "disconnected", reason: "Python backend exited" });
+				this.clearPendingRequests(new Error("Bluetooth adapter stopped"));
+				this.ctx.broadcast({ type: "disconnected", reason: "Bluetooth adapter stopped" });
 			});
 			this.pythonProcess.on("error", (err) => {
-				this.ctx.log(`Python backend error: ${err.message}`);
+				this.ctx.log(`Bluetooth adapter error: ${err.message}`);
 				this.pythonProcess = null;
 			});
 
@@ -348,7 +345,7 @@ class UsbBlePlugin extends PluginBase {
 			// silently running a different build.
 			if (!this.pythonProcess) {
 				throw new Error(
-					`BLE bridge exited on startup — port ${PYTHON_WS_PORT} may already be in use by another instance.`,
+					"The Bluetooth adapter could not start — another instance of the app may already be using it.",
 				);
 			}
 			await this.connectToPythonWs();
@@ -367,33 +364,33 @@ class UsbBlePlugin extends PluginBase {
 
 	private async connectToPythonWs(): Promise<void> {
 		return new Promise((resolve, reject) => {
-			this.ctx.log(`Connecting to Python WebSocket at ${PYTHON_WS_URL}...`);
+			this.ctx.log("Connecting to the Bluetooth adapter…");
 			const ws = new WebSocket(PYTHON_WS_URL);
 			const timeout = setTimeout(() => {
 				ws.close();
-				reject(new Error("Python WebSocket connection timeout"));
+				reject(new Error("Timed out connecting to the Bluetooth adapter"));
 			}, CONNECTION_TIMEOUT_MS);
 
 			ws.on("open", () => {
 				clearTimeout(timeout);
-				this.ctx.log("Connected to Python backend WebSocket");
+				this.ctx.log("Connected to the Bluetooth adapter");
 				this.pythonWs = ws;
 				resolve();
 			});
 			ws.on("error", (err) => {
 				clearTimeout(timeout);
-				reject(new Error(`Python WebSocket error: ${err.message}`));
+				reject(new Error(`Bluetooth adapter connection error: ${err.message}`));
 			});
 			ws.on("close", () => {
-				this.ctx.log("Python WebSocket closed");
+				this.ctx.log("Bluetooth adapter connection closed");
 				this.pythonWs = null;
-				this.clearPendingRequests(new Error("WebSocket connection closed"));
+				this.clearPendingRequests(new Error("Bluetooth adapter connection closed"));
 			});
 			ws.on("message", (data: Buffer) => {
 				try {
 					this.handlePythonMessage(JSON.parse(data.toString()) as PythonMessage);
 				} catch (err) {
-					this.ctx.log(`Failed to parse Python message: ${err}`);
+					this.ctx.log(`Unreadable message from the Bluetooth adapter: ${err}`);
 				}
 			});
 		});
@@ -438,13 +435,13 @@ class UsbBlePlugin extends PluginBase {
 				this.ctx.broadcast({ type: "error", message: msg.message as string });
 				break;
 			default:
-				this.ctx.log(`Unknown Python message type: ${msg.type}`);
+				this.ctx.log(`Unexpected message from the Bluetooth adapter: ${msg.type}`);
 		}
 	}
 
 	private async sendToPython(msg: PythonMessage): Promise<void> {
 		if (!this.pythonWs || this.pythonWs.readyState !== WebSocket.OPEN) {
-			throw new Error("Python WebSocket not connected");
+			throw new Error("Bluetooth adapter is not connected");
 		}
 		return new Promise((resolve, reject) => {
 			const requestId = msg.requestId || this.generateRequestId();
@@ -480,12 +477,12 @@ class UsbBlePlugin extends PluginBase {
 			try {
 				this.pythonWs.close();
 			} catch (err) {
-				this.ctx.log(`WebSocket close failed: ${err instanceof Error ? err.message : err}`);
+				this.ctx.log(`Could not close the adapter connection: ${err instanceof Error ? err.message : err}`);
 			}
 			this.pythonWs = null;
 		}
 		if (this.pythonProcess && !this.pythonProcess.killed) {
-			this.ctx.log("Stopping Python backend process...");
+			this.ctx.log("Stopping the Bluetooth adapter…");
 			this.pythonProcess.kill("SIGTERM");
 			await new Promise<void>((resolve) => {
 				const timeout = setTimeout(() => {
@@ -498,12 +495,11 @@ class UsbBlePlugin extends PluginBase {
 				});
 			});
 			this.pythonProcess = null;
-			this.ctx.log("Python backend stopped");
 		}
 	}
 
 	private async cleanup(): Promise<void> {
-		this.clearPendingRequests(new Error("Plugin unloaded"));
+		this.clearPendingRequests(new Error("Bluetooth adapter released"));
 		await this.stopPythonBackend();
 	}
 }
