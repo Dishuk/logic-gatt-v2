@@ -6,4 +6,6 @@
 [tools]
 node = "lts"    # mobile app (Expo / npm)
 bun = "latest"  # desktop app (Electrobun)
-uv = "latest"   # usb-ble Python bridge (also fetches the pinned CPython)
+
+# `uv` is deliberately NOT listed: it is only needed to build the optional usb-ble
+# bridge, and a mise entry would make every task here depend on resolving it.

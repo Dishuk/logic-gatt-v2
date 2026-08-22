@@ -1,5 +1,5 @@
-# BLE bridge backend. `uv` (provisioned by mise) fetches the pinned CPython, so no
-# system Python install is needed.
+# BLE bridge backend. Needs `uv` on PATH (https://docs.astral.sh/uv/) — it fetches the
+# pinned CPython, so no system Python install is required.
 #
 #   make venv   - dev environment
 #   make run    - run from source
@@ -22,16 +22,22 @@ else
     EXE = $(NAME)
 endif
 
-venv: $(VENV)
+# Stamp rather than the venv dir itself: `venv` as both target and directory is
+# circular, and re-running must not fail on an existing environment.
+STAMP = $(VENV)/.deps-installed
 
-$(VENV):
-	uv venv --python $(PYTHON_VERSION) $(VENV)
+venv: $(STAMP)
+
+$(STAMP): requirements.txt
+	@command -v uv >/dev/null 2>&1 || { echo "uv not found — install from https://docs.astral.sh/uv/"; exit 1; }
+	uv venv --python $(PYTHON_VERSION) --clear $(VENV)
 	uv pip install --python $(PY) -r requirements.txt
+	@touch $(STAMP)
 
-run: $(VENV)
+run: $(STAMP)
 	$(PY) main.py
 
-build: $(VENV)
+build: $(STAMP)
 	uv pip install --python $(PY) pyinstaller
 	$(PY) -m PyInstaller --clean --noconfirm blebridge.spec
 	@mkdir -p $(BIN_DIR)

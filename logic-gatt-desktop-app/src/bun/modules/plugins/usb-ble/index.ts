@@ -51,6 +51,7 @@ class UsbBlePlugin extends PluginBase {
 	private pythonWs: WebSocket | null = null;
 	private pendingRequests = new Map<string, PendingRequest>();
 	private pythonBackendPath: string;
+	private bridgeBinaryPath: string;
 	private isConnecting = false;
 	private isUploading = false;
 	private requestIdCounter = 0;
@@ -59,6 +60,28 @@ class UsbBlePlugin extends PluginBase {
 		super(context);
 		// Python backend ships in python/ within this module's directory.
 		this.pythonBackendPath = path.join(context.moduleDir, "python");
+		this.bridgeBinaryPath = path.join(
+			context.moduleDir,
+			"bin",
+			process.platform === "win32" ? "logicgatt-blebridge.exe" : "logicgatt-blebridge",
+		);
+	}
+
+	/** Frozen bridge if present (shipped builds), else the dev venv interpreter + main.py. */
+	private resolveBackendCommand(): { cmd: string; args: string[]; cwd: string } | null {
+		if (fs.existsSync(this.bridgeBinaryPath)) {
+			// python/ is not shipped alongside the frozen binary, so anchor cwd to bin/.
+			return { cmd: this.bridgeBinaryPath, args: [], cwd: path.dirname(this.bridgeBinaryPath) };
+		}
+		const venvPython =
+			process.platform === "win32"
+				? path.join(this.pythonBackendPath, "venv", "Scripts", "python.exe")
+				: path.join(this.pythonBackendPath, "venv", "bin", "python");
+		const mainScript = path.join(this.pythonBackendPath, "main.py");
+		if (fs.existsSync(venvPython) && fs.existsSync(mainScript)) {
+			return { cmd: venvPython, args: [mainScript], cwd: this.pythonBackendPath };
+		}
+		return null;
 	}
 
 	private generateRequestId(): string {
@@ -75,8 +98,10 @@ class UsbBlePlugin extends PluginBase {
 		this.ctx.log("USB BLE plugin unloaded");
 	}
 
+	// Windows and Linux only — bless has no macOS peripheral backend we ship for.
 	isAvailable(): boolean {
-		return true;
+		if (process.platform !== "win32" && process.platform !== "linux") return false;
+		return this.resolveBackendCommand() !== null;
 	}
 
 	getRoutes(): PluginRoute[] {
@@ -235,16 +260,16 @@ class UsbBlePlugin extends PluginBase {
 		this.isConnecting = true;
 
 		try {
-			this.ctx.log("Starting Python backend process...");
-			const venvPython =
-				process.platform === "win32"
-					? path.join(this.pythonBackendPath, "venv", "Scripts", "python.exe")
-					: path.join(this.pythonBackendPath, "venv", "bin", "python");
-			const pythonCmd = fs.existsSync(venvPython) ? venvPython : "python3";
-			const mainScript = path.join(this.pythonBackendPath, "main.py");
+			const backend = this.resolveBackendCommand();
+			if (!backend) {
+				throw new Error(
+					"BLE bridge not found — build it with `make usb-ble-bridge` (or `make venv` in the plugin's python/ dir for a dev run).",
+				);
+			}
+			this.ctx.log(`Starting BLE bridge: ${backend.cmd}`);
 
-			this.pythonProcess = spawn(pythonCmd, [mainScript], {
-				cwd: this.pythonBackendPath,
+			this.pythonProcess = spawn(backend.cmd, backend.args, {
+				cwd: backend.cwd,
 				stdio: ["ignore", "pipe", "pipe"],
 			});
 

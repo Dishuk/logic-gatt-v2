@@ -1,10 +1,11 @@
 MOBILE := logic-gatt-mobile-app
 DESKTOP := logic-gatt-desktop-app
+USB_BLE_PY := $(DESKTOP)/src/bun/modules/plugins/usb-ble/python
 
 .PHONY: help install install-mobile install-desktop \
         start ios android apk apk-release lint \
         dev hmr build gen-theme \
-        test typecheck dist
+        test typecheck dist usb-ble-bridge
 
 help:
 	@echo "logic-gatt-v2 targets:"
@@ -24,6 +25,7 @@ help:
 	@echo ""
 	@echo "  Shared:"
 	@echo "  make gen-theme        - regenerate desktop theme.css from shared/tokens.ts"
+	@echo "  make usb-ble-bridge   - freeze the usb-ble BLE bridge binary (Windows/Linux; run on each OS)"
 	@echo ""
 	@echo "  Checks:"
 	@echo "  make test             - run desktop Vitest suite"
@@ -83,6 +85,12 @@ build:
 # Regenerate the desktop's theme.css from the canonical shared/tokens.ts.
 gen-theme:
 	bun shared/build-css.ts
+
+# --- usb-ble bridge (Windows + Linux) ---
+# Freezes the BLE bridge into a single binary at the plugin's bin/. PyInstaller
+# cannot cross-compile, so run this on each OS being shipped.
+usb-ble-bridge:
+	cd $(USB_BLE_PY) && $(MAKE) build
 
 # --- checks ---
 # `test` = desktop Vitest (only the desktop app has tests). `typecheck` runs
