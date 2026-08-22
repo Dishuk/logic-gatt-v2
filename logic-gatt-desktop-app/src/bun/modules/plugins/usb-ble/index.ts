@@ -294,12 +294,13 @@ class UsbBlePlugin extends PluginBase {
 			};
 			process.once("exit", this.exitGuard);
 
-			this.pythonProcess.stdout?.on("data", (data: Buffer) => {
-				for (const line of data.toString().trim().split("\n")) this.ctx.log(`[Python] ${line}`);
-			});
-			this.pythonProcess.stderr?.on("data", (data: Buffer) => {
-				for (const line of data.toString().trim().split("\n")) this.ctx.log(`[Python ERR] ${line}`);
-			});
+			// Both streams are tagged the same: Python's logging writes to stderr, so
+			// labelling that as an error would mark every INFO line as a failure.
+			const relay = (data: Buffer) => {
+				for (const line of data.toString().trim().split("\n")) this.ctx.log(`[bridge] ${line}`);
+			};
+			this.pythonProcess.stdout?.on("data", relay);
+			this.pythonProcess.stderr?.on("data", relay);
 			this.pythonProcess.on("exit", (code) => {
 				this.ctx.log(`Python backend exited with code ${code}`);
 				this.clearExitGuard();
