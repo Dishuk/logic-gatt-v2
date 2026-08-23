@@ -2,7 +2,8 @@
  * Worker pool for user function execution. The sandbox itself lives in `sandbox.ts`.
  */
 
-import type { SetVariables, UserFunction, UserVariable } from '../types'
+import type { UserFunction } from '../types'
+import type { SessionState } from './sessionState'
 import type { WorkerRequest, WorkerResponse } from './sandbox.worker'
 
 /** Only `log` is used during execution — variables are resolved inside the worker. */
@@ -83,8 +84,7 @@ export async function executeFunction(
   fn: UserFunction,
   input: Uint8Array,
   ctx: ExecutionContext,
-  variables: UserVariable[],
-  setVariables: SetVariables,
+  session: SessionState,
   scenarioNames: string[] = []
 ): Promise<{ output: Uint8Array | null; scenarioRequests: string[] }> {
   const id = crypto.randomUUID()
@@ -93,7 +93,7 @@ export async function executeFunction(
     id,
     body: fn.body,
     input: Array.from(input),
-    variables: variables.map(v => ({ name: v.name, type: v.type, value: v.initialValue })),
+    variables: session.list().map(v => ({ name: v.name, type: v.type, value: v.current })),
     scenarioNames,
   }
 
@@ -109,20 +109,10 @@ export async function executeFunction(
 
     pendingRequests.set(id, {
       resolve: result => {
-        // Merge into the LATEST state (functional updater), not a snapshot taken when this
-        // call started: timer scenarios and reads run concurrently, so a stale-snapshot
-        // replace would clobber unrelated edits.
-        if (result.variableUpdates.length > 0) {
-          setVariables(prev => {
-            const updated = [...prev]
-            for (const update of result.variableUpdates) {
-              const idx = updated.findIndex(v => v.name === update.name)
-              if (idx !== -1) {
-                updated[idx] = { ...updated[idx], initialValue: update.value }
-              }
-            }
-            return updated
-          })
+        // Applied synchronously so the next function to run — a concurrent timer
+        // scenario, the next step in this pipeline — reads what this one wrote.
+        for (const update of result.variableUpdates) {
+          session.set(update.name, update.value)
         }
 
         resolve({ output: result.output, scenarioRequests: result.scenarioRequests })

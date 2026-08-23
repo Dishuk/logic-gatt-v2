@@ -29,9 +29,21 @@ function emptyProject(): ProjectData {
   }
 }
 
-export function useProject(log: (msg: string) => void) {
+/**
+ * @param onProjectLoad Called whenever the whole project is replaced (preset, import),
+ *   so session state can start over instead of carrying values across projects.
+ */
+export function useProject(log: (msg: string) => void, onProjectLoad?: (data: ProjectData) => void) {
   const [isLoading, setIsLoading] = useState(true)
   const [project, setProject] = useState<ProjectData>(emptyProject)
+
+  const onProjectLoadRef = useRef(onProjectLoad)
+  onProjectLoadRef.current = onProjectLoad
+
+  function loadProject(data: ProjectData) {
+    setProject(data)
+    onProjectLoadRef.current?.(data)
+  }
 
   // Destructure for convenience
   const { deviceSettings, services, functions, variables, tests, scenarios } = project
@@ -46,7 +58,7 @@ export function useProject(log: (msg: string) => void) {
     rpc.request
       .getPreset({ name: 'default' })
       .then(json => {
-        setProject(importProject(JSON.stringify(json)))
+        loadProject(importProject(JSON.stringify(json)))
         log('Default project loaded')
       })
       .catch(err => {
@@ -91,7 +103,7 @@ export function useProject(log: (msg: string) => void) {
   async function handleImport() {
     try {
       const imported = await pickAndImportProject()
-      setProject(imported)
+      loadProject(imported)
       log(
         `Imported: ${imported.services.length} service(s), ${imported.functions.length} function(s), ${imported.variables.length} variable(s), ${imported.tests.length} test(s), ${imported.scenarios.length} scenario(s)`
       )
@@ -134,6 +146,9 @@ export function useProject(log: (msg: string) => void) {
     addService,
     updateService,
     removeService,
+
+    // Whole-project replacement (also used by the examples menu)
+    loadProject,
 
     // Import/Export
     handleImport,

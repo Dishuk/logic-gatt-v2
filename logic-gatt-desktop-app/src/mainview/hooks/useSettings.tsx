@@ -5,6 +5,9 @@ import type { ModuleSettingValues } from '../../shared/wire'
 
 export interface Settings {
   editorTheme: string
+  /** Live variable values go back to the authored ones on Upload & Run. */
+  resetVariablesOnRun: boolean
+  /** …and when the device link drops. */
   resetVariablesOnDisconnect: boolean
   /** Values for module-declared settings, keyed by module id. */
   modules: Record<string, ModuleSettingValues>
@@ -12,6 +15,7 @@ export interface Settings {
 
 const DEFAULT_SETTINGS: Settings = {
   editorTheme: 'Default Dark',
+  resetVariablesOnRun: true,
   resetVariablesOnDisconnect: true,
   modules: {},
 }

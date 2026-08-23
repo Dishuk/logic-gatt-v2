@@ -2221,6 +2221,152 @@ input[type='checkbox'] {
   opacity: 1;
 }
 
+/* State tab (live session values) */
+.state-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.state-panel .card {
+  margin-bottom: 0;
+}
+
+.state-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.state-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.35rem;
+  flex-shrink: 0;
+}
+
+.state-badge--live {
+  color: var(--status-green);
+  border-color: var(--status-green);
+}
+
+/* Live marker on the State tab itself, so a run is visible from the Schema tab. */
+.tab-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--status-green);
+}
+
+/* Buttons never wrap their own text (global rule), so let the group wrap instead —
+   the left panel can be dragged down to 20% width. */
+.state-panel .card-header {
+  flex-wrap: wrap;
+}
+
+.state-header-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.state-var-list {
+  gap: 0.35rem;
+}
+
+/* A pressed-state button, so the filter sits with the actions instead of reading as a form field. */
+.toggle-btn {
+  background: transparent;
+  border-color: var(--border-primary);
+  color: var(--text-secondary);
+}
+
+.toggle-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.toggle-btn--on,
+.toggle-btn--on:hover:not(:disabled) {
+  background: var(--accent-blue-transparent);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.state-var-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.state-var-type {
+  color: var(--text-muted);
+}
+
+.state-var-initial {
+  color: var(--text-muted);
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-var-arrow {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.state-var-current {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Unchanged reads as muted as the project value it matches, so the eye lands only on
+   what a run actually moved — readout when idle, live input while running. */
+.state-var .state-var-current,
+.state-var .hex-input,
+.state-var .var-value-input {
+  color: var(--text-muted);
+}
+
+.state-var--dirty .state-var-current,
+.state-var--dirty .hex-input,
+.state-var--dirty .var-value-input {
+  color: var(--accent-blue-light);
+}
+
+.state-var-actions {
+  display: inline-flex;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.icon-btn:hover {
+  color: var(--accent-blue);
+  background: var(--bg-hover);
+}
+
 /* Responsive */
 @media (max-width: 700px) {
   .top-bar {

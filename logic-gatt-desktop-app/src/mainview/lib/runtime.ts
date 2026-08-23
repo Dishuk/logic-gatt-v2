@@ -3,8 +3,9 @@
  * Listens for BLE events from the transport connection and runs matching scenario pipelines.
  */
 
-import { TriggerKind, StepKind, type Schema, type Scenario, type TimerTrigger, type UserFunction, type UserVariable, type SetVariables } from '../types'
+import { TriggerKind, StepKind, type Schema, type Scenario, type TimerTrigger, type UserFunction } from '../types'
 import type { TransportConnection } from './transport/types'
+import type { SessionState } from './sessionState'
 import { executeFunction } from './executor'
 
 type Log = (msg: string) => void
@@ -35,8 +36,8 @@ interface RuntimeDeps {
   schema: Schema
   getScenarios: () => Scenario[]
   getFunctions: () => UserFunction[]
-  getVariables: () => UserVariable[]
-  setVariables: SetVariables
+  /** Live variable values for this session. Never the authored ones. */
+  session: SessionState
   log: Log
   fnLog: Log
   onDisconnect: () => void
@@ -46,7 +47,7 @@ export function startRuntime(deps: RuntimeDeps): {
   stop: () => void
   runScenario: (scenario: Scenario) => Promise<void>
 } {
-  const { connection, schema, getScenarios, getFunctions, getVariables, setVariables, log, fnLog, onDisconnect } = deps
+  const { connection, schema, getScenarios, getFunctions, session, log, fnLog, onDisconnect } = deps
   let stopped = false
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
@@ -89,14 +90,7 @@ export function startRuntime(deps: RuntimeDeps): {
             buffer = null
             break
           }
-          const result = await executeFunction(
-            fn,
-            buffer ?? new Uint8Array(),
-            ctx,
-            getVariables(),
-            setVariables,
-            getScenarioNames()
-          )
+          const result = await executeFunction(fn, buffer ?? new Uint8Array(), ctx, session, getScenarioNames())
           buffer = result.output
           pendingScenarios.push(...result.scenarioRequests)
           if (!buffer) {

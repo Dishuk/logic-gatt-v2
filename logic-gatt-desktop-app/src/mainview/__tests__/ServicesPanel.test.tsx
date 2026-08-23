@@ -57,16 +57,16 @@ describe('ServicesPanel', () => {
     it('should render with no services', () => {
       render(<ServicesPanel {...createDefaultProps()} />)
 
-      expect(screen.getByText('Services (0/8)')).toBeInTheDocument()
       expect(screen.getByText('+ Add Service')).toBeInTheDocument()
     })
 
-    it('should render service count correctly', () => {
+    it('should render one card per service', () => {
       const services = [createService('1', 'uuid-1'), createService('2', 'uuid-2')]
 
       render(<ServicesPanel {...createDefaultProps({ services })} />)
 
-      expect(screen.getByText('Services (2/8)')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('uuid-1')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('uuid-2')).toBeInTheDocument()
     })
 
     it('should hide add button at max services', () => {
@@ -83,7 +83,6 @@ describe('ServicesPanel', () => {
 
       render(<ServicesPanel {...createDefaultProps({ services })} />)
 
-      expect(screen.getByText('Services (8/8)')).toBeInTheDocument()
       expect(screen.queryByText('+ Add Service')).not.toBeInTheDocument()
     })
 

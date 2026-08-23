@@ -339,14 +339,7 @@ export function CodeEditorPanel({ project, fnLogger, transport }: CodeEditorPane
             </button>
           </div>
           <div style={{ display: tab === 'test' ? undefined : 'none' }}>
-            <TestPanel
-              functions={functions}
-              variables={variables}
-              tests={tests}
-              onVariablesChange={setVariables}
-              onTestsChange={setTests}
-              fnLog={fnLog}
-            />
+            <TestPanel functions={functions} variables={variables} tests={tests} onTestsChange={setTests} fnLog={fnLog} />
           </div>
           <div className="settings-tab" style={{ display: tab === 'settings' ? undefined : 'none' }}>
             <SettingsSection title="General" subtitle="Applies to the whole app.">
@@ -365,21 +358,6 @@ export function CodeEditorPanel({ project, fnLogger, transport }: CodeEditorPane
                     ))}
                   </select>
                   <ThemePreview theme={themeExtension} />
-                </CardBody>
-              </Card>
-              <Card>
-                <CardHeader title="Runtime" noBorder />
-                <CardBody>
-                  <label className="settings-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={settings.resetVariablesOnDisconnect}
-                      disabled
-                      onChange={e => setSetting('resetVariablesOnDisconnect', e.target.checked)}
-                    />
-                    Reset variables on disconnect
-                    <span className="settings-hint">(coming soon)</span>
-                  </label>
                 </CardBody>
               </Card>
             </SettingsSection>

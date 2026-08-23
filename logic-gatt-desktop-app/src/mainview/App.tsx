@@ -1,14 +1,16 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useLogger } from './hooks/useLogger'
 import { useProject } from './hooks/useProject'
+import { useSettings } from './hooks/useSettings'
 import { useTransport } from './hooks/useTransport'
 import type { ExampleProject } from './components/TopBar'
 import { TopBar } from './components/TopBar'
-import { ServicesPanel } from './components/ServicesPanel'
+import { DevicePanel } from './components/DevicePanel'
 import { CodeEditorPanel } from './components/CodeEditorPanel'
 import { Terminal } from './components/Terminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { importProject } from './lib/schemaIO'
+import { createSessionState } from './lib/sessionState'
 import { rpc, onConnectionEvent } from './lib/rpc'
 
 // Preset metadata - maps API preset names to display info
@@ -28,11 +30,34 @@ export function App() {
   const deviceLogger = useLogger()
   const fnLogger = useLogger()
 
-  // Project state
-  const project = useProject(deviceLogger.log)
+  const { settings } = useSettings()
+
+  // Live variable values. The project holds the authored ones and is never written to
+  // by a run; this store is what scenarios read and write (see lib/sessionState).
+  const session = useMemo(() => createSessionState(), [])
+
+  // Project state. Loading another project starts session state over — same-named
+  // variables from the old one must not carry their values across.
+  const project = useProject(deviceLogger.log, data => session.reseed(data.variables))
 
   // Transport connection
-  const transport = useTransport({ log: deviceLogger.log, fnLog: fnLogger.log })
+  const resetPolicy = useMemo(
+    () => ({ onRun: settings.resetVariablesOnRun, onDisconnect: settings.resetVariablesOnDisconnect }),
+    [settings.resetVariablesOnRun, settings.resetVariablesOnDisconnect]
+  )
+  const transport = useTransport({
+    log: deviceLogger.log,
+    fnLog: fnLogger.log,
+    session,
+    getVariables: () => project.variablesRef.current,
+    resetPolicy,
+  })
+
+  // Definition edits (added, removed, renamed, retyped, reordered) reach the session
+  // without disturbing values a run has already produced.
+  useEffect(() => {
+    session.sync(project.variables)
+  }, [session, project.variables])
 
   // The webview is created at the OUTER window size on Windows and only snaps to the client
   // area on a real resize, so ask Bun to nudge the window now that we've mounted.
@@ -84,13 +109,16 @@ export function App() {
     document.addEventListener('mouseup', onUp)
   }, [])
 
-  const handleUpload = () => {
-    transport.handleUpload(project.services, project.deviceSettings, {
-      getScenarios: () => project.scenariosRef.current,
-      getFunctions: () => project.functionsRef.current,
-      getVariables: () => project.variablesRef.current,
-      setVariables: project.setVariables,
-    })
+  const handleUpload = (options?: { reseed?: boolean }) => {
+    transport.handleUpload(
+      project.services,
+      project.deviceSettings,
+      {
+        getScenarios: () => project.scenariosRef.current,
+        getFunctions: () => project.functionsRef.current,
+      },
+      options
+    )
   }
 
   // The phone can drop out (sleep, Wi-Fi blip) and dial back in. Keep the Wi-Fi server
@@ -112,7 +140,8 @@ export function App() {
       } else if (e.type === 'peer-connected' && resumeOnReconnect.current) {
         resumeOnReconnect.current = false
         deviceLogger.log('Phone reconnected — restarting the device')
-        uploadRef.current()
+        // Resuming the same session: a dropped Wi-Fi link must not reset variables.
+        uploadRef.current({ reseed: false })
       }
     })
     return off
@@ -123,13 +152,7 @@ export function App() {
       // example.data is now the preset name (string)
       const presetName = example.data as string
       const json = await rpc.request.getPreset({ name: presetName })
-      const data = importProject(JSON.stringify(json))
-      project.setDeviceSettings(data.deviceSettings)
-      project.setServices(data.services)
-      project.setFunctions(data.functions)
-      project.setVariables(data.variables)
-      project.setTests(data.tests)
-      project.setScenarios(data.scenarios)
+      project.loadProject(importProject(JSON.stringify(json)))
       deviceLogger.log(`Loaded example: ${example.name}`)
     } catch (err) {
       deviceLogger.log(`Failed to load example: ${err instanceof Error ? err.message : String(err)}`)
@@ -143,7 +166,7 @@ export function App() {
           transport={transport}
           project={project}
           logger={deviceLogger}
-          onUpload={handleUpload}
+          onUpload={() => handleUpload()}
           examples={examples}
           onLoadExample={handleLoadExample}
         />
@@ -152,7 +175,7 @@ export function App() {
           ref={panelsRef}
           style={{ '--panel-left-basis': `${leftWidthPct}%` } as React.CSSProperties}
         >
-          <ServicesPanel project={project} />
+          <DevicePanel project={project} session={session} running={running} />
           <div className="panel-resize-handle" onMouseDown={startPanelResize} />
           <CodeEditorPanel project={project} fnLogger={fnLogger} transport={transport} />
         </div>

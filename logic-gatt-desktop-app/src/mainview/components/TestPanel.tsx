@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import type { UserFunction, UserVariable, UserTest, SetVariables } from '../types'
+import type { UserFunction, UserVariable, UserTest } from '../types'
 import { executeFunction } from '../lib/executor'
+import { createSessionState } from '../lib/sessionState'
 import { Card, CardHeader, CardBody } from './Card'
 import { HexByteInput } from './HexByteInput'
 import { ArrowRight, GripVertical } from 'lucide-react'
@@ -19,7 +20,6 @@ interface TestPanelProps {
   functions: UserFunction[]
   variables: UserVariable[]
   tests: UserTest[]
-  onVariablesChange: SetVariables
   onTestsChange: (tests: UserTest[]) => void
   fnLog: (msg: string) => void
 }
@@ -47,19 +47,16 @@ async function runTest(
   test: UserTest,
   functions: UserFunction[],
   variables: UserVariable[],
-  onVariablesChange: SetVariables,
   fnLog: (msg: string) => void
 ): Promise<TestResult | null> {
   const fn = functions.find(f => f.id === test.functionId)
   if (!fn) return null
   const input = hexToBytes(test.inputHex)
-  const ctx = {
-    log: fnLog,
-    getVar: () => undefined,
-    setVar: () => {},
-  }
+  // A throwaway session per test: variable writes stay out of the project and out of
+  // any live device session, and each test starts from the authored values.
+  const session = createSessionState(variables)
   fnLog(`--- Run ${fn.name}(${bytesToHex(input) || 'empty'}) ---`)
-  const result = await executeFunction(fn, input, ctx, variables, onVariablesChange)
+  const result = await executeFunction(fn, input, { log: fnLog }, session)
   const out = result.output
   const outputHex = out ? bytesToHex(out) || '(empty)' : 'null'
   fnLog(`Result: [${outputHex}]`)
@@ -194,7 +191,7 @@ function SortableTestEntry({
   )
 }
 
-export function TestPanel({ functions, variables, tests, onVariablesChange, onTestsChange, fnLog }: TestPanelProps) {
+export function TestPanel({ functions, variables, tests, onTestsChange, fnLog }: TestPanelProps) {
   const [results, setResults] = useState<Map<string, TestResult>>(new Map())
   const [running, setRunning] = useState<Set<string>>(new Set())
   const [runningAll, setRunningAll] = useState(false)
@@ -222,7 +219,7 @@ export function TestPanel({ functions, variables, tests, onVariablesChange, onTe
   async function runSingle(test: UserTest) {
     setRunning(prev => new Set(prev).add(test.id))
     try {
-      const result = await runTest(test, functions, variables, onVariablesChange, fnLog)
+      const result = await runTest(test, functions, variables, fnLog)
       if (result) {
         setResults(prev => new Map(prev).set(test.id, result))
       }
@@ -247,7 +244,7 @@ export function TestPanel({ functions, variables, tests, onVariablesChange, onTe
     setRunningAll(true)
     const newResults = new Map<string, TestResult>()
     for (const test of tests) {
-      const result = await runTest(test, functions, variables, onVariablesChange, fnLog)
+      const result = await runTest(test, functions, variables, fnLog)
       if (result) {
         newResults.set(test.id, result)
       }
