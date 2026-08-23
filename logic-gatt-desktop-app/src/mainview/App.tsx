@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useLogger } from './hooks/useLogger'
 import { useProject } from './hooks/useProject'
+import { useProjectFile } from './hooks/useProjectFile'
 import { useSettings } from './hooks/useSettings'
 import { useTransport } from './hooks/useTransport'
 import type { ExampleProject } from './components/TopBar'
@@ -9,7 +10,8 @@ import { DevicePanel } from './components/DevicePanel'
 import { CodeEditorPanel } from './components/CodeEditorPanel'
 import { Terminal } from './components/Terminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { importProject } from './lib/schemaIO'
+import { SaveAsModal } from './components/SaveAsModal'
+import { UnsavedChangesModal } from './components/UnsavedChangesModal'
 import { createSessionState } from './lib/sessionState'
 import { rpc, onConnectionEvent } from './lib/rpc'
 
@@ -39,6 +41,7 @@ export function App() {
   // Project state. Loading another project starts session state over — same-named
   // variables from the old one must not carry their values across.
   const project = useProject(deviceLogger.log, data => session.reseed(data.variables))
+  const files = useProjectFile(project, deviceLogger.log)
 
   // Transport connection
   const resetPolicy = useMemo(
@@ -73,9 +76,9 @@ export function App() {
     async function loadPresetList() {
       try {
         const presets = await rpc.request.getPresets()
-        const exampleList: ExampleProject[] = presets.map((name: string) => {
-          const info = PRESET_INFO[name] ?? { name, description: '' }
-          return { name: info.name, description: info.description, data: name }
+        const exampleList: ExampleProject[] = presets.map((preset: string) => {
+          const info = PRESET_INFO[preset] ?? { name: preset, description: '' }
+          return { name: info.name, description: info.description, preset }
         })
         setExamples(exampleList)
       } catch {
@@ -147,17 +150,17 @@ export function App() {
     return off
   }, [port, running, handleStop, deviceLogger.log])
 
-  const handleLoadExample = async (example: ExampleProject) => {
-    try {
-      // example.data is now the preset name (string)
-      const presetName = example.data as string
-      const json = await rpc.request.getPreset({ name: presetName })
-      project.loadProject(importProject(JSON.stringify(json)))
-      deviceLogger.log(`Loaded example: ${example.name}`)
-    } catch (err) {
-      deviceLogger.log(`Failed to load example: ${err instanceof Error ? err.message : String(err)}`)
+  // Ctrl/Cmd+S saves; an untitled project falls through to Save As.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        void files.save()
+      }
     }
-  }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [files])
 
   return (
     <ErrorBoundary>
@@ -165,10 +168,10 @@ export function App() {
         <TopBar
           transport={transport}
           project={project}
+          files={files}
           logger={deviceLogger}
           onUpload={() => handleUpload()}
           examples={examples}
-          onLoadExample={handleLoadExample}
         />
         <div
           className="panels"
@@ -180,6 +183,23 @@ export function App() {
           <CodeEditorPanel project={project} fnLogger={fnLogger} transport={transport} />
         </div>
         <Terminal deviceLogger={deviceLogger} fnLogger={fnLogger} />
+
+        {files.pending && (
+          <UnsavedChangesModal
+            action={files.pendingLabel}
+            projectName={project.projectName}
+            onSave={files.confirmSave}
+            onDiscard={files.confirmDiscard}
+            onCancel={files.confirmCancel}
+          />
+        )}
+        {files.saveAsOpen && (
+          <SaveAsModal
+            defaultName={project.currentPath ? project.projectName : 'project.json'}
+            onSave={files.completeSaveAs}
+            onCancel={files.cancelSaveAs}
+          />
+        )}
       </div>
     </ErrorBoundary>
   )

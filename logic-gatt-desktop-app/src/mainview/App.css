@@ -52,15 +52,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 1rem;
+  /* The project name's `margin-right: auto` eats the free space, so space-between
+     cannot separate the left-hand items — they need a real gap. */
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
   background: var(--bg-topbar);
   border-bottom: 1px solid var(--border-topbar);
   flex-shrink: 0;
-}
-
-.top-bar h1 {
-  font-size: 1rem;
-  white-space: nowrap;
 }
 
 .toolbar {
@@ -81,65 +79,86 @@ body {
   border-color: var(--color-error);
 }
 
-/* Examples dropdown */
-.examples-dropdown {
+/* Menu bar. Items are plain labels, not buttons — no border or fill until hovered. */
+.menubar {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.menubar-item {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-content);
+}
+
+.menubar-item:hover:not(:disabled),
+.menubar-item--open {
+  background: var(--bg-button-hover);
+  color: var(--text-primary);
+}
+
+/* Dropdown panel (File menu) */
+.menu-root {
   position: relative;
 }
 
-.examples-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.examples-arrow {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-1px) rotate(45deg);
-  transition: transform 0.15s ease;
-}
-
-.examples-arrow--open {
-  transform: translateY(1px) rotate(-135deg);
-}
-
-.examples-menu {
+.menu-panel {
   position: absolute;
   top: 100%;
-  right: 0;
+  left: 0;
   margin-top: 4px;
+  padding: 0.25rem 0;
   background: var(--bg-dark);
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-sm);
   z-index: 100;
-  min-width: 200px;
+  min-width: 220px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
-.example-item {
-  display: block;
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
   width: 100%;
   text-align: left;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.75rem;
   border: none;
   border-radius: 0;
   background: transparent;
   font-size: 0.85rem;
 }
 
-.example-item:hover {
+.menu-item:hover:not(:disabled) {
   background: var(--bg-button-hover);
 }
 
-.example-item:first-child {
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+.menu-item:disabled {
+  opacity: 0.4;
 }
 
-.example-item:last-child {
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+.menu-shortcut {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 0.25rem 0;
+  background: var(--border-primary);
+}
+
+.menu-label {
+  padding: 0.35rem 0.75rem 0.2rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
 button {
@@ -1758,18 +1777,20 @@ input[type='number'] {
   cursor: pointer;
 }
 
-/* Settings tab */
-.settings-tab {
+/* Settings dialog */
+.settings-content {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  padding: 1rem;
+  overflow-y: auto;
 }
 
-.settings-tab .card {
+.settings-content .card {
   margin-bottom: 0;
 }
 
-.settings-tab .card-body {
+.settings-content .card-body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -2365,6 +2386,109 @@ input[type='checkbox'] {
 .icon-btn:hover {
   color: var(--accent-blue);
   background: var(--bg-hover);
+}
+
+/* Document identity in the top bar. `margin-right: auto` keeps the name next to the
+   title and pushes the toolbar right, overriding the bar's space-between. */
+.project-name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: auto;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 22ch;
+}
+
+.project-dirty {
+  color: var(--status-amber);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* Confirm / Save As dialogs. Reuses .help-overlay for the backdrop. */
+.confirm-modal {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  width: 90%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px var(--modal-shadow);
+}
+
+.confirm-body {
+  padding: 1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-content);
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.primary-btn {
+  background: var(--accent-blue-transparent);
+  color: var(--accent-blue);
+  border: 1px solid var(--accent-blue);
+}
+
+.primary-btn:hover:not(:disabled) {
+  background: var(--accent-blue);
+  color: var(--bg-darkest);
+}
+
+.danger-btn {
+  background: var(--bg-error-btn);
+  color: var(--color-error);
+  border: 1px solid var(--border-error-transparent);
+}
+
+.danger-btn:hover:not(:disabled) {
+  background: var(--bg-error-btn-hover);
+  border-color: var(--color-error);
+}
+
+.save-as-field {
+  display: block;
+  margin-bottom: 0.85rem;
+}
+
+.save-as-field > span {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.save-as-field input {
+  width: 100%;
+}
+
+.save-as-folder {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.save-as-folder input {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.save-as-warning {
+  margin-top: 0.5rem;
+  color: var(--status-amber);
+  overflow-wrap: anywhere;
 }
 
 /* Responsive */

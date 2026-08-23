@@ -7,7 +7,7 @@ interface SettingsSectionProps {
   children: ReactNode
 }
 
-/** A named group in the Settings tab, so every setting shows what it applies to. */
+/** A named group in the Settings dialog, so every setting shows what it applies to. */
 export function SettingsSection({ title, subtitle, children }: SettingsSectionProps) {
   return (
     <section className="settings-section">

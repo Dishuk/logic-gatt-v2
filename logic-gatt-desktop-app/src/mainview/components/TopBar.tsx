@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import type { TransportConnection } from '../lib/transport/types'
-import type { Service } from '../types'
+import type { UseProject } from '../hooks/useProject'
+import type { UseProjectFile } from '../hooks/useProjectFile'
 import { BackendTransportModal } from './BackendTransportModal'
+import { FileMenu } from './FileMenu'
+import { SettingsModal } from './SettingsModal'
 
 export interface ExampleProject {
   name: string
   description: string
-  data: unknown
+  /** Preset id the Bun main process knows it by. */
+  preset: string
 }
 
 interface TopBarProps {
@@ -19,29 +23,41 @@ interface TopBarProps {
     handleStop: () => void
     handleDisconnect: () => void
   }
-  project: {
-    services: Service[]
-    handleImport: () => void
-    handleExport: () => void
-  }
+  project: UseProject
+  files: UseProjectFile
   logger: { log: (msg: string) => void }
   onUpload: () => void
   examples?: ExampleProject[]
-  onLoadExample?: (example: ExampleProject) => void
 }
 
-export function TopBar({ transport, project, logger, onUpload, examples = [], onLoadExample }: TopBarProps) {
+export function TopBar({ transport, project, files, logger, onUpload, examples = [] }: TopBarProps) {
   const { port, portName, uploading, running, connect, handleStop, handleDisconnect } = transport
-  const { services, handleImport, handleExport } = project
+  const { services, projectName, isDirty } = project
   const { log } = logger
   const uploadDisabled = uploading || services.length === 0 || !port
   const [showHelp, setShowHelp] = useState(false)
-  const [showExamples, setShowExamples] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [showTransport, setShowTransport] = useState(false)
 
   return (
     <div className="top-bar">
-      <h1>LogicGATT</h1>
+      <div className="menubar">
+        <FileMenu files={files} saveDisabled={!isDirty && project.currentPath !== null} examples={examples} />
+        <button className="menubar-item" onClick={() => setShowSettings(true)}>
+          Settings
+        </button>
+        <button className="menubar-item" onClick={() => setShowHelp(true)}>
+          Help
+        </button>
+      </div>
+      <div className="project-name" title={project.currentPath ?? 'Not saved to a file yet'}>
+        {projectName}
+        {isDirty && (
+          <span className="project-dirty" aria-label="Unsaved changes">
+            •
+          </span>
+        )}
+      </div>
       <div className="toolbar">
         <button onClick={() => (port ? handleDisconnect() : setShowTransport(true))} disabled={running}>
           {portName ? `Disconnect (${portName})` : 'Connect Device'}
@@ -53,36 +69,6 @@ export function TopBar({ transport, project, logger, onUpload, examples = [], on
           style={{ minWidth: '7rem' }}
         >
           {running ? 'Stop' : uploading ? 'Uploading...' : 'Upload & Run'}
-        </button>
-        <button onClick={handleImport}>Import</button>
-        <button onClick={handleExport}>Export</button>
-        {examples.length > 0 && (
-          <div className="examples-dropdown">
-            <button className="examples-btn" onClick={() => setShowExamples(!showExamples)}>
-              Examples
-              <span className={`examples-arrow${showExamples ? ' examples-arrow--open' : ''}`} />
-            </button>
-            {showExamples && (
-              <div className="examples-menu">
-                {examples.map((ex, i) => (
-                  <button
-                    key={i}
-                    className="example-item"
-                    onClick={() => {
-                      onLoadExample?.(ex)
-                      setShowExamples(false)
-                    }}
-                    title={ex.description}
-                  >
-                    {ex.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        <button onClick={() => setShowHelp(true)} style={{ marginLeft: 'auto' }}>
-          Help
         </button>
       </div>
 
@@ -177,13 +163,21 @@ export function TopBar({ transport, project, logger, onUpload, examples = [], on
                     <em> Variables</em> tab, and Stop does not restore it — re-enter a value there to reset it
                   </li>
                   <li>Use Tags on services/characteristics for easier identification in scenarios</li>
-                  <li>Import/Export saves your entire project as JSON</li>
+                  <li>
+                    Save writes the whole project (services, functions, variables, tests, scenarios) to one JSON
+                    file. Upload &amp; Run never touches it, so testing against a device leaves the file alone
+                  </li>
+                  <li>
+                    Closing the window does not prompt about unsaved changes : save before quitting
+                  </li>
                 </ul>
               </section>
             </div>
           </div>
         </div>
       )}
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
       {showTransport && (
         <BackendTransportModal

@@ -12,6 +12,12 @@ import bleUartFactory from "./modules/plugins/ble-uart/index";
 import bleUartManifest from "./modules/plugins/ble-uart/manifest.json";
 import type { PluginManifest } from "./modules/sdk";
 import { initLogger, getLogDir, writeLog } from "./logger";
+import {
+	openProjectFile,
+	pickProjectDirectory,
+	resolveProjectPath,
+	writeProjectFile,
+} from "./project-store";
 import { applyWindowsDarkTitleBar } from "./windows-dark-titlebar";
 import { applyWindowsWindowIcon } from "./windows-window-icon";
 import defaultPreset from "./presets/default.json";
@@ -143,6 +149,18 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
 				const preset = PRESETS[name];
 				if (!preset) throw new Error(`Unknown preset: ${name}`);
 				return preset;
+			},
+			async openProjectFile() {
+				return openProjectFile();
+			},
+			async writeProjectFile({ path, contents }) {
+				writeProjectFile(path, contents);
+			},
+			async pickProjectDirectory() {
+				return pickProjectDirectory();
+			},
+			async resolveProjectPath({ dir, name }) {
+				return resolveProjectPath(dir, name);
 			},
 			async fitWindow() {
 				// The webview just mounted. On Windows it's created at the OUTER window size

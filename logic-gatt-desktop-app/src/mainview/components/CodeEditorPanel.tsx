@@ -4,15 +4,12 @@ import { useCodeMirror } from '../hooks/useCodeMirror'
 import { useSettings } from '../hooks/useSettings'
 import { createCompletionSource } from '../lib/completions'
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete'
-import { themes, themeNames } from '../themes'
-import { Card, CardHeader, CardBody } from './Card'
+import { themes } from '../themes'
+import { Card, CardHeader } from './Card'
 import { HexByteInput } from './HexByteInput'
 import { TestPanel } from './TestPanel'
 import { ScenariosPanel } from './ScenariosPanel'
-import { ModuleSettings } from './ModuleSettings'
-import { SettingsSection } from './SettingsSection'
 import type { Extension } from '@codemirror/state'
-import { CodeBlock } from './CodeBlock'
 import { GripVertical, BookOpen } from 'lucide-react'
 import { FunctionApiReference } from './FunctionApiReference'
 import type { DragEndEvent } from '@dnd-kit/core'
@@ -27,21 +24,6 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 
 const VAR_TYPES: VarType[] = ['hex', 'u8', 'u16', 'u32', 'string']
-
-const PREVIEW_CODE = `// Theme preview
-  const counter = ctx.getVar("count");
-  ctx.setVar("count", counter + 1);
-
-  if (input.length > 0) {
-    console.log("Received:", input);
-  }
-
-  return new Uint8Array([0xAC, 0x4B]);
-`
-
-function ThemePreview({ theme }: { theme: Extension }) {
-  return <CodeBlock code={PREVIEW_CODE} theme={theme} className="theme-preview" />
-}
 
 interface CodeEditorPanelProps {
   project: {
@@ -212,9 +194,9 @@ export function CodeEditorPanel({ project, fnLogger, transport }: CodeEditorPane
   const { services, functions, variables, tests, scenarios, setFunctions, setVariables, setTests, setScenarios } = project
   const { log: fnLog } = fnLogger
   const { runScenario, running } = transport
-  const { settings, setSetting } = useSettings()
+  const { settings } = useSettings()
   const themeExtension = useMemo(() => themes[settings.editorTheme] ?? themes['Default Dark'], [settings.editorTheme])
-  const [tab, setTab] = useState<'scenarios' | 'functions' | 'variables' | 'test' | 'settings'>('scenarios')
+  const [tab, setTab] = useState<'scenarios' | 'functions' | 'variables' | 'test'>('scenarios')
   const [showApi, setShowApi] = useState(false)
 
   const dupFnNames = useMemo(() => findDuplicateNames(functions), [functions])
@@ -285,9 +267,6 @@ export function CodeEditorPanel({ project, fnLogger, transport }: CodeEditorPane
           <button className={`tab${tab === 'test' ? ' tab--active' : ''}`} onClick={() => setTab('test')}>
             Test
           </button>
-          <button className={`tab${tab === 'settings' ? ' tab--active' : ''}`} onClick={() => setTab('settings')}>
-            Settings
-          </button>
         </div>
         <div className="editor-tab-content">
           <div style={{ display: tab === 'scenarios' ? undefined : 'none' }}>
@@ -340,28 +319,6 @@ export function CodeEditorPanel({ project, fnLogger, transport }: CodeEditorPane
           </div>
           <div style={{ display: tab === 'test' ? undefined : 'none' }}>
             <TestPanel functions={functions} variables={variables} tests={tests} onTestsChange={setTests} fnLog={fnLog} />
-          </div>
-          <div className="settings-tab" style={{ display: tab === 'settings' ? undefined : 'none' }}>
-            <SettingsSection title="General" subtitle="Applies to the whole app.">
-              <Card>
-                <CardHeader title="Editor Theme" noBorder />
-                <CardBody>
-                  <select
-                    className="select w-full"
-                    value={settings.editorTheme}
-                    onChange={e => setSetting('editorTheme', e.target.value)}
-                  >
-                    {themeNames.map(name => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <ThemePreview theme={themeExtension} />
-                </CardBody>
-              </Card>
-            </SettingsSection>
-            <ModuleSettings />
           </div>
         </div>
       </div>

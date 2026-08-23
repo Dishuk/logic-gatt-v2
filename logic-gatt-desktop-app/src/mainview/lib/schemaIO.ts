@@ -20,7 +20,7 @@ export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
   manufacturerData: '',
 }
 
-/** Full project export format */
+/** The authored document, as stored in a project file. */
 export interface ProjectData {
   deviceSettings: DeviceSettings
   services: Schema
@@ -30,7 +30,7 @@ export interface ProjectData {
   scenarios: Scenario[]
 }
 
-/** Strip runtime-only `id` fields for a clean service export. */
+/** Strip runtime-only `id` fields so the file holds only authored data. */
 function stripServiceIds(schema: Schema): unknown[] {
   return schema.map(s => ({
     uuid: s.uuid,
@@ -77,7 +77,11 @@ function stripScenarioIds(scenarios: Scenario[]): unknown[] {
   }))
 }
 
-export function exportProject(data: ProjectData): string {
+/**
+ * Serialize the document to the on-disk format. Also the dirty-check baseline: a
+ * project is unmodified when this matches the snapshot taken at open/save time.
+ */
+export function serializeProject(data: ProjectData): string {
   return JSON.stringify(
     {
       deviceSettings: data.deviceSettings,
@@ -90,16 +94,6 @@ export function exportProject(data: ProjectData): string {
     null,
     2
   )
-}
-
-export function downloadProject(data: ProjectData) {
-  const blob = new Blob([exportProject(data)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'gatt-project.json'
-  a.click()
-  URL.revokeObjectURL(url)
 }
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -240,8 +234,13 @@ function parseDeviceSettings(raw: unknown): DeviceSettings {
   }
 }
 
-/** Import from new project format or legacy services-only format */
-export function importProject(json: string): ProjectData {
+/**
+ * Parse a project file, or the legacy services-only format (a bare array) still
+ * accepted from the old web app. Missing fields are defaulted and invalid entries
+ * dropped, so the result is normalized — never compare raw file text against a
+ * serialization of this, only serializations against each other.
+ */
+export function parseProject(json: string): ProjectData {
   const parsed = JSON.parse(json)
 
   // Legacy format: array of services
@@ -284,23 +283,4 @@ export function importProject(json: string): ProjectData {
     : []
 
   return { deviceSettings, services, functions, variables, tests, scenarios }
-}
-
-export function pickAndImportProject(): Promise<ProjectData> {
-  return new Promise((resolve, reject) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = '.json'
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (!file) return reject(new Error('No file selected'))
-      try {
-        const text = await file.text()
-        resolve(importProject(text))
-      } catch (err) {
-        reject(err)
-      }
-    }
-    input.click()
-  })
 }

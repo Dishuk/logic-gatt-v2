@@ -41,6 +41,10 @@ export function onConnectionEvent(fn: (e: ConnectionEvent) => void): () => void 
 }
 
 const electroRpc = Electroview.defineRPC<DesktopRPCSchema>({
+	// Electrobun defaults to a 1s request timeout, which is far too short here: the
+	// file dialogs block on a human, and the native call blocks Bun's thread for as
+	// long as the dialog is up, so no response can be sent until it closes.
+	maxRequestTime: 5 * 60 * 1000,
 	handlers: {
 		requests: {},
 		messages: {

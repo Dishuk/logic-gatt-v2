@@ -38,6 +38,9 @@ export type ConnectionInfo = {
 	peerId: string | null;
 };
 
+/** A project file the webview opened or saved: its absolute path and contents. */
+export type ProjectFile = { path: string; contents: string };
+
 /** Connection-flow events pushed from Bun to the webview (ping/pong milestone). */
 export type ConnectionEvent =
 	| { type: "server-listening"; url: string; host: string; port: number }
@@ -74,6 +77,16 @@ export type DesktopRPCSchema = {
 			// presets
 			getPresets: Req<void, string[]>;
 			getPreset: Req<{ name: string }, unknown>;
+			// project files. The webview has no filesystem access (a Blob download is all
+			// it can do), so every read/write goes through Bun. `null` = the user cancelled
+			// the dialog; a genuine failure rejects instead.
+			openProjectFile: Req<void, ProjectFile | null>;
+			/** Overwrite an existing path — no dialog. Used by Save on a titled project. */
+			writeProjectFile: Req<{ path: string; contents: string }, void>;
+			/** Directory picker for Save As (electrobun 1.18.1 has no save dialog). */
+			pickProjectDirectory: Req<void, string | null>;
+			/** Join dir + filename Bun-side and reject a name that escapes the directory. */
+			resolveProjectPath: Req<{ dir: string; name: string }, { path: string; exists: boolean }>;
 			// Called once the webview has mounted so Bun can nudge the window size — the
 			// webview is created at the OUTER frame size and only corrects to the client
 			// area on a real resize event (see index.ts).
