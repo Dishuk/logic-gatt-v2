@@ -63,12 +63,7 @@ export function FileMenu({ files, saveDisabled, examples }: FileMenuProps) {
 
           <div className="menu-separator" />
 
-          <button
-            className="menu-item"
-            role="menuitem"
-            onClick={run(() => void files.save())}
-            disabled={saveDisabled}
-          >
+          <button className="menu-item" role="menuitem" onClick={run(() => void files.save())} disabled={saveDisabled}>
             Save
             <span className="menu-shortcut">Ctrl+S</span>
           </button>

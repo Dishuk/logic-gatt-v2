@@ -117,8 +117,8 @@ export function TopBar({ transport, project, files, logger, onUpload, examples =
 
                   <dt>Device &rarr; State</dt>
                   <dd>
-                    The values the running session is working with. Edit one live, put it back with{' '}
-                    <em>Reset</em>, or promote it into the project with <em>Save as initial</em>
+                    The values the running session is working with. Edit one live, put it back with <em>Reset</em>, or
+                    promote it into the project with <em>Save as initial</em>
                   </dd>
 
                   <dt>Scenarios</dt>
@@ -132,8 +132,8 @@ export function TopBar({ transport, project, files, logger, onUpload, examples =
 
                   <dt>Variables</dt>
                   <dd>
-                    Declare the variables a project has, and the value each one starts from. Reachable in
-                    functions via <code>ctx.getVar()</code> / <code>ctx.setVar()</code>
+                    Declare the variables a project has, and the value each one starts from. Reachable in functions via{' '}
+                    <code>ctx.getVar()</code> / <code>ctx.setVar()</code>
                   </dd>
 
                   <dt>Tests</dt>
@@ -168,21 +168,19 @@ export function TopBar({ transport, project, files, logger, onUpload, examples =
                   </li>
                   <li>
                     A run never writes to the project. <code>ctx.setVar()</code> changes the session value in{' '}
-                    <em>Device &rarr; State</em>; the starting value in the <em>Variables</em> tab stays put.
-                    Reset one there, or all of them with <em>Reset all</em>
+                    <em>Device &rarr; State</em>; the starting value in the <em>Variables</em> tab stays put. Reset one
+                    there, or all of them with <em>Reset all</em>
                   </li>
                   <li>
-                    <em>Device &rarr; State</em> also chooses when values go back to their project ones —
-                    on Upload &amp; Run, on disconnect, or never
+                    <em>Device &rarr; State</em> also chooses when values go back to their project ones — on Upload
+                    &amp; Run, on disconnect, or never
                   </li>
                   <li>Use Tags on services/characteristics for easier identification in scenarios</li>
                   <li>
-                    Save writes the whole project (services, functions, variables, tests, scenarios) to one JSON
-                    file. Upload &amp; Run never touches it, so testing against a device leaves the file alone
+                    Save writes the whole project (services, functions, variables, tests, scenarios) to one JSON file.
+                    Upload &amp; Run never touches it, so testing against a device leaves the file alone
                   </li>
-                  <li>
-                    Closing the window does not prompt about unsaved changes : save before quitting
-                  </li>
+                  <li>Closing the window does not prompt about unsaved changes : save before quitting</li>
                 </ul>
               </section>
             </div>

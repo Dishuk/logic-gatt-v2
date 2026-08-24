@@ -30,15 +30,17 @@ const defaultDeviceSettings: DeviceSettings = {
   manufacturerData: '',
 }
 
-function createDefaultProps(overrides: {
-  deviceSettings?: DeviceSettings
-  services?: Service[]
-  setDeviceSettings?: () => void
-  setServices?: () => void
-  addService?: ReturnType<typeof vi.fn>
-  updateService?: () => void
-  removeService?: () => void
-} = {}) {
+function createDefaultProps(
+  overrides: {
+    deviceSettings?: DeviceSettings
+    services?: Service[]
+    setDeviceSettings?: () => void
+    setServices?: () => void
+    addService?: ReturnType<typeof vi.fn>
+    updateService?: () => void
+    removeService?: () => void
+  } = {}
+) {
   return {
     project: {
       deviceSettings: overrides.deviceSettings ?? defaultDeviceSettings,

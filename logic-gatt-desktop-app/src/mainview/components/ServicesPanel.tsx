@@ -5,12 +5,7 @@ import { DeviceSettingsCard } from './DeviceSettingsCard'
 import { MAX_SERVICES } from '../lib/constants'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 
 function findDuplicateUuids(services: Service[]): Set<string> {
   const seen = new Map<string, number>()
@@ -40,8 +35,7 @@ interface ServicesPanelProps {
 }
 
 export function ServicesPanel({ project }: ServicesPanelProps) {
-  const { deviceSettings, setDeviceSettings, services, setServices, addService, updateService, removeService } =
-    project
+  const { deviceSettings, setDeviceSettings, services, setServices, addService, updateService, removeService } = project
   const dupUuids = useMemo(() => findDuplicateUuids(services), [services])
 
   const sensors = useSensors(

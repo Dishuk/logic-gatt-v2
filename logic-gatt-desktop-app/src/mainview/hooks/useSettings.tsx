@@ -80,9 +80,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <SettingsContext.Provider value={{ settings, setSetting, setModuleSetting }}>
-      {children}
-    </SettingsContext.Provider>
+    <SettingsContext.Provider value={{ settings, setSetting, setModuleSetting }}>{children}</SettingsContext.Provider>
   )
 }
 

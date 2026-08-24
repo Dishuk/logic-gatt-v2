@@ -59,9 +59,10 @@ export function FunctionApiReference({ onClose, theme }: FunctionApiReferencePro
         <div className="api-content">
           <section className="api-section">
             <p className="api-lead">
-              A function transforms bytes. Its body runs in a sandbox with <code>input</code> and a few helpers in scope.
-              Return a <code>Uint8Array</code> to emit bytes, or <code>null</code> for no output. Functions run from a
-              scenario&apos;s <em>Call Function</em> step (with the current buffer) or from the <em>Test</em> tab.
+              A function transforms bytes. Its body runs in a sandbox with <code>input</code> and a few helpers in
+              scope. Return a <code>Uint8Array</code> to emit bytes, or <code>null</code> for no output. Functions run
+              from a scenario&apos;s <em>Call Function</em> step (with the current buffer) or from the <em>Test</em>{' '}
+              tab.
             </p>
             <CodeBlock code={SIGNATURE_EXAMPLE} theme={theme} />
             <dl className="api-defs">
@@ -221,7 +222,8 @@ export function FunctionApiReference({ onClose, theme }: FunctionApiReferencePro
                 </tr>
                 <tr>
                   <td>
-                    <ApiLink href={`${MDN}parseInt`}>parseInt</ApiLink> · <ApiLink href={`${MDN}Number`}>Number</ApiLink>
+                    <ApiLink href={`${MDN}parseInt`}>parseInt</ApiLink> ·{' '}
+                    <ApiLink href={`${MDN}Number`}>Number</ApiLink>
                   </td>
                   <td>Parse and convert numbers.</td>
                 </tr>
@@ -252,8 +254,8 @@ export function FunctionApiReference({ onClose, theme }: FunctionApiReferencePro
               throws.
             </p>
             <p className="api-blocked">
-              Functions run in a worker with these names blocked and the <code>Function</code> constructor sealed,
-              but this is a guardrail against mistakes, not a security boundary — only run project files you trust.
+              Functions run in a worker with these names blocked and the <code>Function</code> constructor sealed, but
+              this is a guardrail against mistakes, not a security boundary — only run project files you trust.
             </p>
           </section>
 

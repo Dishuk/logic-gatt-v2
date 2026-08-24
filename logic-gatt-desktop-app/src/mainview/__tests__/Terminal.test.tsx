@@ -29,8 +29,7 @@ function setup() {
     logDevice: (m: string) => act(() => api.device(m)),
     logFn: (m: string) => act(() => api.fn(m)),
     tab: (name: RegExp) => screen.getByRole('button', { name }),
-    hasDot: (name: RegExp) =>
-      within(screen.getByRole('button', { name })).queryByLabelText('New lines') !== null,
+    hasDot: (name: RegExp) => within(screen.getByRole('button', { name })).queryByLabelText('New lines') !== null,
   }
 }
 

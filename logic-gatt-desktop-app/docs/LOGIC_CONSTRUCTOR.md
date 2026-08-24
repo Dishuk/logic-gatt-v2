@@ -54,21 +54,21 @@ Named values in a single flat namespace, shared by all functions and scenarios. 
 variable in the Variables tab before use; `getVar`/`setVar` on an unknown name logs a warning
 and does nothing.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | `string` | Unique identifier |
-| `type` | `hex \| u8 \| u16 \| u32 \| string` | How the value is stored/interpreted |
-| `initialValue` | `string` | Hex (`"00 00 00 01"`) or a literal, per type |
+| Field          | Type                                | Description                                  |
+| -------------- | ----------------------------------- | -------------------------------------------- |
+| `name`         | `string`                            | Unique identifier                            |
+| `type`         | `hex \| u8 \| u16 \| u32 \| string` | How the value is stored/interpreted          |
+| `initialValue` | `string`                            | Hex (`"00 00 00 01"`) or a literal, per type |
 
 The `type` fixes what `getVar` returns and what `setVar` accepts:
 
-| Type | Value in JS | `setVar` accepts |
-|------|-------------|------------------|
-| `hex` | `Uint8Array` | a `Uint8Array` |
-| `u8` | `number` | integer 0–255 |
-| `u16` | `number` | integer 0–65535 |
-| `u32` | `number` | integer 0–4294967295 |
-| `string` | `string` | a string |
+| Type     | Value in JS  | `setVar` accepts     |
+| -------- | ------------ | -------------------- |
+| `hex`    | `Uint8Array` | a `Uint8Array`       |
+| `u8`     | `number`     | integer 0–255        |
+| `u16`    | `number`     | integer 0–65535      |
+| `u32`    | `number`     | integer 0–4294967295 |
+| `string` | `string`     | a string             |
 
 `setVar` with a wrong type or out-of-range number logs an error and leaves the variable
 unchanged. Variables are the only way to share state between scenarios.
@@ -81,7 +81,7 @@ testing against a device leaves the project file alone.
 
 - **Variables tab** — declares each variable and the value it starts from.
 - **Device → State** — the session values a run is actually using. Each row can be edited
-  live, put back to the project value, or promoted into the project (*Save as initial*).
+  live, put back to the project value, or promoted into the project (_Save as initial_).
 
 Session values survive Stop, so a run's end state stays inspectable. When they go back to the
 authored ones is a setting, in the same panel: on Upload & Run, on disconnect, or neither.
@@ -110,12 +110,12 @@ return writer().uint8(0x00).uint8(cmd).build()
 
 ### `ctx`
 
-| Call | Signature | Behavior |
-|------|-----------|----------|
-| `ctx.getVar(name)` | `(string) => Uint8Array \| number \| string \| undefined` | Read a variable, typed per its declaration. Unknown name → warning, returns `undefined`. |
-| `ctx.setVar(name, value)` | `(string, value) => void` | Write a variable. Value must match the variable's type (see [Variables](#variables)); mismatch → error, no change. Unknown name → warning. |
-| `ctx.log(msg)` | `(string) => void` | Print a line to the Terminal panel. |
-| `ctx.runScenario(name)` | `(string) => void` | Queue another scenario to run after this pipeline finishes, with the pipeline's final buffer as its input. Unknown name → warning. Chains stop after 8 levels (see [Execution model](#execution-model)). |
+| Call                      | Signature                                                 | Behavior                                                                                                                                                                                                 |
+| ------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.getVar(name)`        | `(string) => Uint8Array \| number \| string \| undefined` | Read a variable, typed per its declaration. Unknown name → warning, returns `undefined`.                                                                                                                 |
+| `ctx.setVar(name, value)` | `(string, value) => void`                                 | Write a variable. Value must match the variable's type (see [Variables](#variables)); mismatch → error, no change. Unknown name → warning.                                                               |
+| `ctx.log(msg)`            | `(string) => void`                                        | Print a line to the Terminal panel.                                                                                                                                                                      |
+| `ctx.runScenario(name)`   | `(string) => void`                                        | Queue another scenario to run after this pipeline finishes, with the pipeline's final buffer as its input. Unknown name → warning. Chains stop after 8 levels (see [Execution model](#execution-model)). |
 
 ### `console`
 
@@ -126,36 +126,36 @@ panel (objects are JSON-stringified).
 
 `reader(data: Uint8Array)` returns a reader that advances a cursor as it reads.
 
-| Method | Returns | Bytes |
-|--------|---------|-------|
-| `uint8()` / `int8()` | `number` | 1 |
-| `uint16LE()` / `uint16BE()` | `number` | 2 |
-| `int16LE()` / `int16BE()` | `number` | 2 |
-| `uint32LE()` / `uint32BE()` | `number` | 4 |
-| `int32LE()` / `int32BE()` | `number` | 4 |
-| `uintLE(n)` / `uintBE(n)` | `number`, or `bigint` if `n > 4` | n |
-| `intLE(n)` / `intBE(n)` | `number`, or `bigint` if `n > 4` | n |
-| `bytes(n)` | `Uint8Array` | n |
-| `skip(n)` | `void` | advances n |
-| `remaining()` | `number` | — |
-| `pos` | `number` (read/write) | — |
+| Method                      | Returns                          | Bytes      |
+| --------------------------- | -------------------------------- | ---------- |
+| `uint8()` / `int8()`        | `number`                         | 1          |
+| `uint16LE()` / `uint16BE()` | `number`                         | 2          |
+| `int16LE()` / `int16BE()`   | `number`                         | 2          |
+| `uint32LE()` / `uint32BE()` | `number`                         | 4          |
+| `int32LE()` / `int32BE()`   | `number`                         | 4          |
+| `uintLE(n)` / `uintBE(n)`   | `number`, or `bigint` if `n > 4` | n          |
+| `intLE(n)` / `intBE(n)`     | `number`, or `bigint` if `n > 4` | n          |
+| `bytes(n)`                  | `Uint8Array`                     | n          |
+| `skip(n)`                   | `void`                           | advances n |
+| `remaining()`               | `number`                         | —          |
+| `pos`                       | `number` (read/write)            | —          |
 
 ### `writer()` — chainable binary writer
 
 `writer()` returns a builder; every write returns the writer, and `build()` returns the
 `Uint8Array`.
 
-| Method | Argument | Bytes |
-|--------|----------|-------|
-| `uint8(v)` / `int8(v)` | `number` | 1 |
-| `uint16LE(v)` / `uint16BE(v)` | `number` | 2 |
-| `int16LE(v)` / `int16BE(v)` | `number` | 2 |
-| `uint32LE(v)` / `uint32BE(v)` | `number` | 4 |
-| `int32LE(v)` / `int32BE(v)` | `number` | 4 |
-| `uintLE(v, n)` / `uintBE(v, n)` | `number \| bigint`, count | n |
-| `intLE(v, n)` / `intBE(v, n)` | `number \| bigint`, count | n |
-| `bytes(data)` | `Uint8Array \| number[]` | data.length |
-| `build()` | — | returns `Uint8Array` |
+| Method                          | Argument                  | Bytes                |
+| ------------------------------- | ------------------------- | -------------------- |
+| `uint8(v)` / `int8(v)`          | `number`                  | 1                    |
+| `uint16LE(v)` / `uint16BE(v)`   | `number`                  | 2                    |
+| `int16LE(v)` / `int16BE(v)`     | `number`                  | 2                    |
+| `uint32LE(v)` / `uint32BE(v)`   | `number`                  | 4                    |
+| `int32LE(v)` / `int32BE(v)`     | `number`                  | 4                    |
+| `uintLE(v, n)` / `uintBE(v, n)` | `number \| bigint`, count | n                    |
+| `intLE(v, n)` / `intBE(v, n)`   | `number \| bigint`, count | n                    |
+| `bytes(data)`                   | `Uint8Array \| number[]`  | data.length          |
+| `build()`                       | —                         | returns `Uint8Array` |
 
 ### Sandbox constraints
 
@@ -182,8 +182,13 @@ const r = reader(input)
 const cmd = r.uint8()
 const len = r.uint8()
 const data = r.bytes(len)
-let sum = 0; for (const b of data) sum += b
-return writer().uint8(0x00).uint8(cmd).uint16LE(sum & 0xffff).build()
+let sum = 0
+for (const b of data) sum += b
+return writer()
+  .uint8(0x00)
+  .uint8(cmd)
+  .uint16LE(sum & 0xffff)
+  .build()
 ```
 
 Keep state in a variable (`counter` declared as `u32`):
@@ -208,7 +213,13 @@ return input
 A scenario binds one trigger to an ordered list of steps.
 
 ```ts
-interface Scenario { id: string; name: string; enabled: boolean; trigger: Trigger; steps: Step[] }
+interface Scenario {
+  id: string
+  name: string
+  enabled: boolean
+  trigger: Trigger
+  steps: Step[]
+}
 ```
 
 Disabled scenarios (`enabled: false`) never run.
@@ -217,29 +228,29 @@ Disabled scenarios (`enabled: false`) never run.
 
 Choose the trigger type in the scenario card; the relevant fields appear.
 
-| Trigger | Fields | Fires when | Input buffer |
-|---------|--------|------------|--------------|
-| `char-write` | `serviceUuid`, `charUuid` | A central writes that characteristic | the written bytes |
-| `char-read` | `serviceUuid`, `charUuid` | A central reads that characteristic | empty |
-| `timer` | `intervalMs`, `repeat` | The interval elapses; `repeat: false` fires once | empty |
-| `startup` | — | Shortly after the schema is uploaded | empty |
-| `manual` | — | The user runs the scenario from the UI | empty |
+| Trigger      | Fields                    | Fires when                                       | Input buffer      |
+| ------------ | ------------------------- | ------------------------------------------------ | ----------------- |
+| `char-write` | `serviceUuid`, `charUuid` | A central writes that characteristic             | the written bytes |
+| `char-read`  | `serviceUuid`, `charUuid` | A central reads that characteristic              | empty             |
+| `timer`      | `intervalMs`, `repeat`    | The interval elapses; `repeat: false` fires once | empty             |
+| `startup`    | —                         | Shortly after the schema is uploaded             | empty             |
+| `manual`     | —                         | The user runs the scenario from the UI           | empty             |
 
 ### Steps
 
 Steps run top to bottom. Each receives the previous step's output buffer; the first receives
 the trigger's input buffer.
 
-| Step | Fields | Behavior |
-|------|--------|----------|
-| `call-function` | `functionName` | Run the named function with the current buffer as `input`; its return becomes the next buffer. Returning null/none stops the pipeline. A missing function name stops the pipeline. |
-| `notify` | `serviceUuid`, `charUuid` | Send the current buffer as a notification on that characteristic; the buffer passes through unchanged. Skipped if the buffer is empty/null. |
-| `respond` | — | Send the current buffer as the read response. Valid only under a `char-read` trigger; ignored otherwise. |
+| Step            | Fields                    | Behavior                                                                                                                                                                           |
+| --------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `call-function` | `functionName`            | Run the named function with the current buffer as `input`; its return becomes the next buffer. Returning null/none stops the pipeline. A missing function name stops the pipeline. |
+| `notify`        | `serviceUuid`, `charUuid` | Send the current buffer as a notification on that characteristic; the buffer passes through unchanged. Skipped if the buffer is empty/null.                                        |
+| `respond`       | —                         | Send the current buffer as the read response. Valid only under a `char-read` trigger; ignored otherwise.                                                                           |
 
 ### Execution model
 
 1. On schema upload, session values are reseeded from the authored ones (unless that reset is
-   switched off in *Device → State*), `startup` scenarios run after a brief settle delay, and
+   switched off in _Device → State_), `startup` scenarios run after a brief settle delay, and
    `timer` scenarios are scheduled.
 2. A `char-write`/`char-read` event runs every enabled scenario whose trigger matches the
    service+characteristic, in definition order. Each matching scenario gets its **own copy**
@@ -269,7 +280,13 @@ then `respond`. Function `buildStatus` returns the bytes the central should read
 A test pairs a function with a fixed input and (optionally) an expected output:
 
 ```ts
-interface UserTest { id: string; name: string; functionId: string; inputHex: string; expectedHex: string }
+interface UserTest {
+  id: string
+  name: string
+  functionId: string
+  inputHex: string
+  expectedHex: string
+}
 ```
 
 The Test panel runs the selected function against `inputHex`. Each test gets a throwaway

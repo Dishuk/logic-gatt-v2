@@ -22,17 +22,17 @@
 
 /** Read a hex string into bytes. Non-hex characters are separators; see the note above. */
 export function parseHex(raw: string): Uint8Array {
-	const clean = raw.replace(/[^0-9a-fA-F]/g, "");
-	const out: number[] = [];
-	for (let i = 0; i + 2 <= clean.length; i += 2) out.push(parseInt(clean.slice(i, i + 2), 16));
-	return new Uint8Array(out);
+  const clean = raw.replace(/[^0-9a-fA-F]/g, '')
+  const out: number[] = []
+  for (let i = 0; i + 2 <= clean.length; i += 2) out.push(parseInt(clean.slice(i, i + 2), 16))
+  return new Uint8Array(out)
 }
 
 /** Render bytes as uppercase space-separated pairs — the form every field stores. */
 export function formatHex(bytes: Uint8Array): string {
-	return Array.from(bytes)
-		.map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
-		.join(" ");
+  return Array.from(bytes)
+    .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
+    .join(' ')
 }
 
 /**
@@ -42,12 +42,12 @@ export function formatHex(bytes: Uint8Array): string {
  * of its byte, so `"ABC"` commits as `"AB 0C"`.
  */
 export function normalizeHex(raw: string): string {
-	const clean = raw.replace(/[^0-9a-fA-F]/g, "");
-	const even = clean.length % 2 === 0 ? clean : `${clean.slice(0, -1)}0${clean.slice(-1)}`;
-	return formatHex(parseHex(even));
+  const clean = raw.replace(/[^0-9a-fA-F]/g, '')
+  const even = clean.length % 2 === 0 ? clean : `${clean.slice(0, -1)}0${clean.slice(-1)}`
+  return formatHex(parseHex(even))
 }
 
 /** Whether two hex strings denote the same bytes, whatever their spacing or case. */
 export function hexEquals(a: string, b: string): boolean {
-	return formatHex(parseHex(a)) === formatHex(parseHex(b));
+  return formatHex(parseHex(a)) === formatHex(parseHex(b))
 }

@@ -15,10 +15,7 @@ import { emptyProject, type UseProject } from './useProject'
 import { rpc } from '../lib/rpc'
 
 /** An action deferred until the unsaved-changes prompt is answered. */
-export type PendingAction =
-  | { kind: 'new' }
-  | { kind: 'open' }
-  | { kind: 'example'; preset: string; label: string }
+export type PendingAction = { kind: 'new' } | { kind: 'open' } | { kind: 'example'; preset: string; label: string }
 
 function describe(action: PendingAction): string {
   switch (action.kind) {

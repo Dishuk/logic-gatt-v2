@@ -168,7 +168,10 @@ describe('unsaved-changes guard', () => {
   it('saves then proceeds on Save when the document has a path', async () => {
     const { result } = await renderLoaded()
     await act(async () => {
-      result.current.project.markSaved('/tmp/existing.json', serializeProject(result.current.project.projectRef.current))
+      result.current.project.markSaved(
+        '/tmp/existing.json',
+        serializeProject(result.current.project.projectRef.current)
+      )
     })
     edit(result)
     act(() => result.current.files.requestNew())
@@ -177,9 +180,7 @@ describe('unsaved-changes guard', () => {
       await result.current.files.confirmSave()
     })
 
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/tmp/existing.json' })
-    )
+    expect(mockWriteFile).toHaveBeenCalledWith(expect.objectContaining({ path: '/tmp/existing.json' }))
     expect(result.current.project.services).toEqual([])
   })
 

@@ -443,12 +443,12 @@ function MobileConnectUI({
     // already connected (e.g. reconnect), and keep listening for a fresh one.
     void selectPlugin(module.id)
       .then(() => rpc.request.getConnectionInfo())
-      .then((info) => {
+      .then(info => {
         if (info.peerId) void adopt(info.peerId)
       })
       .catch(() => {})
 
-    const off = onConnectionEvent((e) => {
+    const off = onConnectionEvent(e => {
       if (e.type === 'peer-connected') void adopt(e.peerId)
     })
 
@@ -467,9 +467,9 @@ function MobileConnectUI({
     <div className="plugin-connect-ui">
       <ConnectionPanel />
       <p className="backend-note">
-        Scan the QR with the LogicGATT phone app and this desktop adopts it automatically —
-        nothing to press here. A phone that finds this desktop over Wi-Fi (mDNS) instead has
-        no scanned code to prove it is yours, so it waits for approval above.
+        Scan the QR with the LogicGATT phone app and this desktop adopts it automatically — nothing to press here. A
+        phone that finds this desktop over Wi-Fi (mDNS) instead has no scanned code to prove it is yours, so it waits
+        for approval above.
       </p>
     </div>
   )
@@ -496,9 +496,7 @@ export function BackendTransportModal({ onConnect, onClose, log }: BackendTransp
   }
 
   // Default connection way first (defensive — the host already orders it first).
-  const orderedPlugins = [...plugins].sort(
-    (a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)),
-  )
+  const orderedPlugins = [...plugins].sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)))
 
   // Direction is per-module: `await-peer` (mobile) shows a QR and adopts the phone;
   // everything else uses the metadata-driven action form + an explicit Connect.
@@ -506,12 +504,7 @@ export function BackendTransportModal({ onConnect, onClose, log }: BackendTransp
     module.connectKind === 'await-peer' ? (
       <MobileConnectUI module={module} onConnect={handleConnect} log={log} />
     ) : (
-      <PluginConnectUI
-        plugin={module}
-        onConnect={handleConnect}
-        onCancel={() => setSelectedPlugin(null)}
-        log={log}
-      />
+      <PluginConnectUI plugin={module} onConnect={handleConnect} onCancel={() => setSelectedPlugin(null)} log={log} />
     )
 
   return (

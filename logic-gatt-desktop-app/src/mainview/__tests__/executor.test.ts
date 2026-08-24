@@ -255,7 +255,9 @@ describe('runSandboxed', () => {
     })
 
     it('should round-trip signed values', () => {
-      const r = run('const rd = reader(writer().int16LE(-2).build()); return new Uint8Array([rd.int16LE() === -2 ? 1 : 0]);')
+      const r = run(
+        'const rd = reader(writer().int16LE(-2).build()); return new Uint8Array([rd.int16LE() === -2 ? 1 : 0]);'
+      )
       expect(out(r)).toEqual(new Uint8Array([1]))
     })
   })

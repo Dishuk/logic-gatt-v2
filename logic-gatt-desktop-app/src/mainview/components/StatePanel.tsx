@@ -97,7 +97,9 @@ export function StatePanel({ session, variables, setVariables, running }: StateP
       <div className="state-status">
         <span className={`state-badge${running ? ' state-badge--live' : ''}`}>{running ? 'Live' : 'Idle'}</span>
         <span className="hint">
-          {running ? 'Values below are what scenarios are running against.' : 'Not running — showing the next start values.'}
+          {running
+            ? 'Values below are what scenarios are running against.'
+            : 'Not running — showing the next start values.'}
         </span>
       </div>
 

@@ -191,7 +191,8 @@ function findDuplicateNames(items: { name: string }[]): Set<string> {
 }
 
 export function CodeEditorPanel({ project, fnLogger, transport }: CodeEditorPanelProps) {
-  const { services, functions, variables, tests, scenarios, setFunctions, setVariables, setTests, setScenarios } = project
+  const { services, functions, variables, tests, scenarios, setFunctions, setVariables, setTests, setScenarios } =
+    project
   const { log: fnLog } = fnLogger
   const { runScenario, running } = transport
   const { settings } = useSettings()
@@ -318,7 +319,13 @@ export function CodeEditorPanel({ project, fnLogger, transport }: CodeEditorPane
             </button>
           </div>
           <div style={{ display: tab === 'test' ? undefined : 'none' }}>
-            <TestPanel functions={functions} variables={variables} tests={tests} onTestsChange={setTests} fnLog={fnLog} />
+            <TestPanel
+              functions={functions}
+              variables={variables}
+              tests={tests}
+              onTestsChange={setTests}
+              fnLog={fnLog}
+            />
           </div>
         </div>
       </div>

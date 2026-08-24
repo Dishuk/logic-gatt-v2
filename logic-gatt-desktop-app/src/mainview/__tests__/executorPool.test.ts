@@ -186,9 +186,7 @@ describe('pooling', () => {
     const { ctx } = logger()
     const session = createSessionState()
 
-    const calls = Array.from({ length: 6 }, (_, i) =>
-      executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session)
-    )
+    const calls = Array.from({ length: 6 }, (_, i) => executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session))
 
     expect(FakeWorker.live).toHaveLength(4)
 
@@ -203,9 +201,7 @@ describe('pooling', () => {
     const { ctx } = logger()
     const session = createSessionState()
 
-    const calls = Array.from({ length: 5 }, (_, i) =>
-      executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session)
-    )
+    const calls = Array.from({ length: 5 }, (_, i) => executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session))
     const spinner = FakeWorker.live[0]
 
     await vi.advanceTimersByTimeAsync(6000)
@@ -221,9 +217,7 @@ describe('pooling', () => {
 describe('variables', () => {
   it('applies a function’s writes before the call settles', async () => {
     const { ctx } = logger()
-    const session = createSessionState([
-      { id: 'v1', name: 'count', type: 'u8', initialValue: '1' },
-    ])
+    const session = createSessionState([{ id: 'v1', name: 'count', type: 'u8', initialValue: '1' }])
 
     const call = executeFunction(fn('bump'), new Uint8Array(), ctx, session)
     FakeWorker.live[0].reply({ result: [], variableUpdates: [{ name: 'count', value: '2' }] })
@@ -234,14 +228,10 @@ describe('variables', () => {
 
   it('gives a queued call the variables as they are when it starts', async () => {
     const { ctx } = logger()
-    const session = createSessionState([
-      { id: 'v1', name: 'count', type: 'u8', initialValue: '1' },
-    ])
+    const session = createSessionState([{ id: 'v1', name: 'count', type: 'u8', initialValue: '1' }])
 
     // Fill every slot, then queue one more behind them.
-    const running = Array.from({ length: 4 }, (_, i) =>
-      executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session)
-    )
+    const running = Array.from({ length: 4 }, (_, i) => executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session))
     const queued = executeFunction(fn('last'), new Uint8Array(), ctx, session)
 
     // The first call rewrites the variable before the queued one is dispatched.
