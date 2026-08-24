@@ -9,6 +9,31 @@ const MIN_HEIGHT = 100
 const CONVERT_MIN_HEIGHT = 160
 const DEFAULT_HEIGHT = 200
 
+/**
+ * Whether a log tab has gained lines the user has not looked at.
+ *
+ * Only one tab is on screen at a time, and the device log is the sole report of a
+ * failed Upload & Run — so from Convert (or Functions) the button appears to do
+ * nothing at all. A dot on the tab says where to look.
+ */
+function useUnreadLogs(count: number, showing: boolean): boolean {
+  const [unread, setUnread] = useState(false)
+  const seen = useRef(count)
+
+  useEffect(() => {
+    if (showing) {
+      seen.current = count
+      setUnread(false)
+      return
+    }
+    // Clearing the log shrinks the count; re-baseline or later lines look like none.
+    if (count < seen.current) seen.current = count
+    else if (count > seen.current) setUnread(true)
+  }, [count, showing])
+
+  return unread
+}
+
 interface TerminalProps {
   deviceLogger: ReturnType<typeof useLogger>
   fnLogger: ReturnType<typeof useLogger>
@@ -29,6 +54,9 @@ export function Terminal({ deviceLogger, fnLogger }: TerminalProps) {
   minHeightRef.current = minHeight
   const logger = tab === 'functions' ? fnLogger : deviceLogger
   const { logs, ref: logRef, clear: onClear } = logger
+
+  const deviceUnread = useUnreadLogs(deviceLogger.logs.length, tab === 'device')
+  const fnUnread = useUnreadLogs(fnLogger.logs.length, tab === 'functions')
 
   // Auto-scroll to the newest line only while the user is pinned to the bottom. Scrolling
   // up to read an event unpins it, so incoming logs no longer yank the view down.
@@ -99,6 +127,7 @@ export function Terminal({ deviceLogger, fnLogger }: TerminalProps) {
             }}
           >
             Device
+            {deviceUnread && <span className="tab-dot tab-dot--unread" aria-label="New lines" />}
           </button>
           <button
             className={`tab${tab === 'functions' ? ' tab--active' : ''}`}
@@ -108,6 +137,7 @@ export function Terminal({ deviceLogger, fnLogger }: TerminalProps) {
             }}
           >
             Functions
+            {fnUnread && <span className="tab-dot tab-dot--unread" aria-label="New lines" />}
           </button>
           <button
             className={`tab${tab === 'convert' ? ' tab--active' : ''}`}

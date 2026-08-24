@@ -2287,6 +2287,12 @@ input[type='checkbox'] {
   background: var(--status-green);
 }
 
+/* Unread log lines on a tab that isn't showing. Amber, not the green "live" dot —
+   this asks to be looked at rather than reporting that something is running. */
+.tab-dot--unread {
+  background: var(--status-amber);
+}
+
 /* Buttons never wrap their own text (global rule), so let the group wrap instead —
    the left panel can be dragged down to 20% width. */
 .state-panel .card-header {
