@@ -1,4 +1,5 @@
 import type { Extension } from '@codemirror/state'
+import { useModalDialog } from '../hooks/useModalDialog'
 import { CodeBlock } from './CodeBlock'
 import { openExternal } from '../lib/rpc'
 
@@ -47,11 +48,21 @@ const WRITER_EXAMPLE = `return writer()
  * `lib/sandbox.worker.ts` (the ground truth for what's injected/blocked).
  */
 export function FunctionApiReference({ onClose, theme }: FunctionApiReferenceProps) {
+  const panelRef = useModalDialog<HTMLDivElement>(onClose)
+
   return (
     <div className="help-overlay" onClick={onClose}>
-      <div className="api-modal" onClick={e => e.stopPropagation()}>
+      <div
+        className="api-modal"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="function-api-title"
+        tabIndex={-1}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>Function API</h2>
+          <h2 id="function-api-title">Function API</h2>
           <button className="modal-close" onClick={onClose}>
             &times;
           </button>

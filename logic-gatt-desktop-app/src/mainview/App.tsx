@@ -127,7 +127,7 @@ export function App() {
   // The phone can drop out (sleep, Wi-Fi blip) and dial back in. Keep the Wi-Fi server
   // listening across the gap — stop the device, then resume it when the phone returns —
   // instead of dropping the link, which would leave nothing to reconnect to.
-  const { port, running, handleStop } = transport
+  const { connection, running, handleStop } = transport
   const resumeOnReconnect = useRef(false)
   const uploadRef = useRef(handleUpload)
   useEffect(() => {
@@ -135,7 +135,7 @@ export function App() {
   })
   useEffect(() => {
     const off = onConnectionEvent(e => {
-      if (!port) return
+      if (!connection) return
       if (e.type === 'peer-disconnected') {
         resumeOnReconnect.current = running
         deviceLogger.log('Phone disconnected — link kept open, waiting for it to reconnect')
@@ -151,7 +151,7 @@ export function App() {
     // `deviceLogger.log` is stable (useCallback with no deps) but `deviceLogger` is a
     // fresh object each render, so depending on it would resubscribe every time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [port, running, handleStop, deviceLogger.log])
+  }, [connection, running, handleStop, deviceLogger.log])
 
   // Ctrl/Cmd+S saves; an untitled project falls through to Save As.
   useEffect(() => {

@@ -3,7 +3,7 @@
  * Cancel is the safe default: the backdrop and Escape both take it.
  */
 
-import { useEffect } from 'react'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 interface UnsavedChangesModalProps {
   /** What the user asked for, e.g. "Opening another project". */
@@ -15,19 +15,21 @@ interface UnsavedChangesModalProps {
 }
 
 export function UnsavedChangesModal({ action, projectName, onSave, onDiscard, onCancel }: UnsavedChangesModalProps) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  const panelRef = useModalDialog<HTMLDivElement>(onCancel)
 
   return (
     <div className="help-overlay" onClick={onCancel}>
-      <div className="confirm-modal" onClick={e => e.stopPropagation()}>
+      <div
+        className="confirm-modal"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="unsaved-changes-title"
+        tabIndex={-1}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>Unsaved changes</h2>
+          <h2 id="unsaved-changes-title">Unsaved changes</h2>
           <button className="modal-close" onClick={onCancel}>
             &times;
           </button>

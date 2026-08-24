@@ -3,7 +3,8 @@
  * are app-wide preferences, not part of authoring a project, and are rarely opened.
  */
 
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
+import { useModalDialog } from '../hooks/useModalDialog'
 import type { Extension } from '@codemirror/state'
 import { useSettings } from '../hooks/useSettings'
 import { themes, themeNames } from '../themes'
@@ -31,19 +32,21 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const { settings, setSetting } = useSettings()
   const themeExtension = useMemo(() => themes[settings.editorTheme] ?? themes['Default Dark'], [settings.editorTheme])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  const panelRef = useModalDialog<HTMLDivElement>(onClose)
 
   return (
     <div className="help-overlay" onClick={onClose}>
-      <div className="help-modal" onClick={e => e.stopPropagation()}>
+      <div
+        className="help-modal"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+        tabIndex={-1}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>Settings</h2>
+          <h2 id="settings-title">Settings</h2>
           <button className="modal-close" onClick={onClose}>
             &times;
           </button>

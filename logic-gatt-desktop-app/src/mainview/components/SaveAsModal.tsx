@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { useModalDialog } from '../hooks/useModalDialog'
 import { rpc } from '../lib/rpc'
 
 interface SaveAsModalProps {
@@ -26,13 +27,7 @@ export function SaveAsModal({ defaultName, onSave, onCancel }: SaveAsModalProps)
   const [overwritePath, setOverwritePath] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  const panelRef = useModalDialog<HTMLDivElement>(onCancel)
 
   // Any edit invalidates a pending overwrite confirmation.
   useEffect(() => setOverwritePath(null), [dir, name])
@@ -74,9 +69,17 @@ export function SaveAsModal({ defaultName, onSave, onCancel }: SaveAsModalProps)
 
   return (
     <div className="help-overlay" onClick={onCancel}>
-      <div className="confirm-modal" onClick={e => e.stopPropagation()}>
+      <div
+        className="confirm-modal"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="save-as-title"
+        tabIndex={-1}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>Save project as</h2>
+          <h2 id="save-as-title">Save project as</h2>
           <button className="modal-close" onClick={onCancel}>
             &times;
           </button>

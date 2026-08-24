@@ -162,9 +162,8 @@ export function useTransport({ log, fnLog, session, getVariables, resetPolicy }:
   }, [])
 
   return {
-    // Expose connection presence as "port" for backwards compatibility with UI
-    port: connection,
-    portName: connectionLabel,
+    connection,
+    connectionLabel,
     uploading,
     running,
 

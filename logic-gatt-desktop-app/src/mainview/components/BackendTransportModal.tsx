@@ -12,6 +12,7 @@ import { ElectrobunConnection } from '../lib/transport/electrobun-connection'
 import { validateSelectOptions, validateStatusResponse, type SelectOption, type StatusResponse } from '../lib/validate'
 import { rpc, onConnectionEvent } from '../lib/rpc'
 import { ConnectionPanel } from './ConnectionPanel'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 interface BackendTransportModalProps {
   onConnect: (connection: TransportConnection, label: string) => void
@@ -480,6 +481,7 @@ function MobileConnectUI({
 // ============================================================================
 
 export function BackendTransportModal({ onConnect, onClose, log }: BackendTransportModalProps) {
+  const panelRef = useModalDialog<HTMLDivElement>(onClose)
   const [plugins, setPlugins] = useState<BackendPluginInfo[]>([])
   const [selectedPlugin, setSelectedPlugin] = useState<BackendPluginInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -509,9 +511,17 @@ export function BackendTransportModal({ onConnect, onClose, log }: BackendTransp
 
   return (
     <div className="transport-overlay" onClick={onClose}>
-      <div className="transport-modal" onClick={e => e.stopPropagation()}>
+      <div
+        className="transport-modal"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transport-title"
+        tabIndex={-1}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>
+          <h2 id="transport-title">
             {selectedPlugin ? (
               <>
                 <button className="back-button" onClick={() => setSelectedPlugin(null)}>
