@@ -1,9 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Trash2, FolderOpen } from 'lucide-react'
 import type { useLogger } from '../hooks/useLogger'
+import { ConvertPanel } from './ConvertPanel'
 import { rpc } from '../lib/rpc'
 
 const MIN_HEIGHT = 100
+/** Just tall enough for the Convert tab's three rows, so no dead space sits below them. */
+const CONVERT_MIN_HEIGHT = 160
 const DEFAULT_HEIGHT = 200
 
 interface TerminalProps {
@@ -12,13 +15,19 @@ interface TerminalProps {
 }
 
 export function Terminal({ deviceLogger, fnLogger }: TerminalProps) {
-  const [tab, setTab] = useState<'device' | 'functions'>('device')
+  const [tab, setTab] = useState<'device' | 'functions' | 'convert'>('device')
   const [height, setHeight] = useState(DEFAULT_HEIGHT)
   const isDragging = useRef(false)
   const startY = useRef(0)
   const startHeight = useRef(0)
 
-  const logger = tab === 'device' ? deviceLogger : fnLogger
+  const isLog = tab !== 'convert'
+  const minHeight = isLog ? MIN_HEIGHT : CONVERT_MIN_HEIGHT
+  // Read by the drag listener, which is registered once and must not close over a
+  // stale minimum when the tab changes.
+  const minHeightRef = useRef(minHeight)
+  minHeightRef.current = minHeight
+  const logger = tab === 'functions' ? fnLogger : deviceLogger
   const { logs, ref: logRef, clear: onClear } = logger
 
   // Auto-scroll to the newest line only while the user is pinned to the bottom. Scrolling
@@ -36,6 +45,11 @@ export function Terminal({ deviceLogger, fnLogger }: TerminalProps) {
     }
   }, [logs, tab, logRef])
 
+  // Switching to Convert grows the strip if it is too short to show the fields.
+  useEffect(() => {
+    if (!isLog) setHeight(h => Math.max(h, CONVERT_MIN_HEIGHT))
+  }, [isLog])
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       isDragging.current = true
@@ -52,7 +66,7 @@ export function Terminal({ deviceLogger, fnLogger }: TerminalProps) {
       if (!isDragging.current) return
       const delta = startY.current - e.clientY
       const maxHeight = window.innerHeight * 0.5
-      const newHeight = Math.min(maxHeight, Math.max(MIN_HEIGHT, startHeight.current + delta))
+      const newHeight = Math.min(maxHeight, Math.max(minHeightRef.current, startHeight.current + delta))
       setHeight(newHeight)
     }
 
@@ -95,8 +109,15 @@ export function Terminal({ deviceLogger, fnLogger }: TerminalProps) {
           >
             Functions
           </button>
+          <button
+            className={`tab${tab === 'convert' ? ' tab--active' : ''}`}
+            onClick={() => setTab('convert')}
+            title="Convert between hex, text, decimal and binary"
+          >
+            Convert
+          </button>
         </div>
-        <div className="terminal-actions">
+        <div className="terminal-actions" style={{ visibility: isLog ? undefined : 'hidden' }}>
           <button
             className="terminal-icon-btn"
             onClick={() => {
@@ -118,13 +139,17 @@ export function Terminal({ deviceLogger, fnLogger }: TerminalProps) {
           </button>
         </div>
       </div>
-      <pre className="terminal-log" ref={logRef as React.RefObject<HTMLPreElement>} onScroll={handleScroll}>
-        {logs.length === 0
-          ? tab === 'device'
-            ? 'Ready. Connect to a device and upload a schema.'
-            : 'No function logs yet.'
-          : logs.join('\n')}
-      </pre>
+      {isLog ? (
+        <pre className="terminal-log" ref={logRef as React.RefObject<HTMLPreElement>} onScroll={handleScroll}>
+          {logs.length === 0
+            ? tab === 'device'
+              ? 'Ready. Connect to a device and upload a schema.'
+              : 'No function logs yet.'
+            : logs.join('\n')}
+        </pre>
+      ) : (
+        <ConvertPanel />
+      )}
     </div>
   )
 }

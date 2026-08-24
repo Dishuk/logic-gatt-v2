@@ -2491,6 +2491,82 @@ input[type='checkbox'] {
   overflow-wrap: anywhere;
 }
 
+/* Convert tab */
+.convert-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--bg-body);
+  padding: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem 1.5rem;
+  align-content: start;
+}
+
+.convert-controls {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.convert-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Binary runs 8 characters per byte, so it gets the full width of both columns. */
+.convert-row--wide,
+.convert-error {
+  grid-column: 1 / -1;
+}
+
+/* Fixed label column keeps every input's left edge aligned across both sections. */
+.convert-row > span {
+  flex: 0 0 6rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.convert-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.convert-input[readonly] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.convert-copy {
+  background: none;
+  border: none;
+  padding: 0.2rem 0.3rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.convert-copy:hover:not(:disabled) {
+  color: var(--accent-blue);
+  background: var(--bg-hover);
+}
+
+.convert-error {
+  font-size: 0.72rem;
+  padding-left: 6.5rem;
+  color: var(--color-error);
+}
+
+/* Side-by-side would squeeze the inputs on a narrow window. */
+@media (max-width: 700px) {
+  .convert-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Responsive */
 @media (max-width: 700px) {
   .top-bar {
