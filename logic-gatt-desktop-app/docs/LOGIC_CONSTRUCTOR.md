@@ -167,7 +167,9 @@ Functions run in a Web Worker with a restricted scope:
   `navigator`, `XMLHttpRequest`, `importScripts`, `indexedDB`, `caches`, and similar globals
   are blocked; accessing one throws.
 - Execution is capped at **5 seconds**; a function that exceeds it is terminated and produces
-  no output (the pipeline stops).
+  no output (the pipeline stops). Each call runs in its own worker, so a function that
+  overruns costs only its own pipeline — scenarios running alongside it are neither delayed
+  nor cancelled. Up to four run at once; further calls wait for a free worker.
 - Exceptions are caught and logged to the Terminal; they stop the pipeline but never crash
   the app.
 
