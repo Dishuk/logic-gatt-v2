@@ -24,9 +24,18 @@ type Req<P, R> = { params: P; response: R };
  * shared file never imports the Bun-only logger). */
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
+/** A peer that connected without the session token and needs the user's decision. */
+export type PendingPeer = { peerId: string; address: string };
+
 /** Info the webview needs to render the QR / show the address. */
 export type ConnectionInfo = {
+	/**
+	 * The address plus this run's session token. Encode it in the QR — it is what the
+	 * phone must present to be adopted without a prompt. Never print it.
+	 */
 	url: string;
+	/** The bare `ws://host:port`, safe to show on screen and in logs. */
+	displayUrl: string;
 	host: string;
 	port: number;
 	localName: string;
@@ -36,6 +45,8 @@ export type ConnectionInfo = {
 	 * (e.g. a reconnect), not only ones that arrive via a live `peer-connected`.
 	 */
 	peerId: string | null;
+	/** Snapshot of a peer awaiting approval, for the same reason as `peerId`. */
+	pendingPeer: PendingPeer | null;
 };
 
 /** A project file the webview opened or saved: its absolute path and contents. */
@@ -46,6 +57,10 @@ export type ConnectionEvent =
 	| { type: "server-listening"; url: string; host: string; port: number }
 	| { type: "peer-connected"; peerId: string }
 	| { type: "peer-disconnected"; peerId: string }
+	/** A tokenless peer is waiting for the user to allow or deny it. */
+	| { type: "peer-pending"; peerId: string; address: string }
+	/** A waiting peer was denied, timed out, or gave up. Clears the prompt. */
+	| { type: "peer-denied"; peerId: string }
 	| { type: "ping"; peerId: string; seq: number }
 	| { type: "pong"; peerId: string; seq: number }
 	| { type: "log"; message: string };
@@ -55,6 +70,10 @@ export type DesktopRPCSchema = {
 		requests: {
 			// connection flow (QR + mDNS + ping/pong milestone)
 			getConnectionInfo: Req<void, ConnectionInfo>;
+			/** Adopt a peer that connected without the session token (mDNS path). */
+			approvePeer: Req<{ peerId: string }, void>;
+			/** Refuse a peer awaiting approval and close its socket. */
+			denyPeer: Req<{ peerId: string }, void>;
 			// transport lifecycle. `connect` opens the link for INITIATE modules (serial /
 			// local backend); it is a no-op for the mobile module (the phone dials in and
 			// is auto-adopted). `disconnect` ends the session for any module.

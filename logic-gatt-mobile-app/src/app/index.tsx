@@ -18,7 +18,13 @@ const STATUS_COLOR: Record<WsStatus, string> = {
   idle: theme.textSecondary,
   connecting: theme.amber,
   reconnecting: theme.amber,
+  awaiting: theme.amber,
   connected: theme.greenBright,
+};
+
+/** The status word alone doesn't say what to do about it; these lines do. */
+const STATUS_HINT: Partial<Record<WsStatus, string>> = {
+  awaiting: 'Allow this phone on the desktop, or scan its QR code instead.',
 };
 
 // Log-line color by severity (debug never reaches the panel; listed for completeness).
@@ -137,6 +143,10 @@ export default function ConnectScreen() {
           </>
         ) : (
           <>
+            {STATUS_HINT[exec.status] ? (
+              <Text style={styles.statusHint}>{STATUS_HINT[exec.status]}</Text>
+            ) : null}
+
             {exec.exec.advError ? (
               <View style={styles.advErrorBox}>
                 <Text style={styles.advErrorTitle}>Advertising failed</Text>
@@ -289,6 +299,7 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: GAP },
   dot: { width: 9, height: 9, borderRadius: 5 },
   statusText: { color: theme.textSecondary, fontFamily: 'monospace', fontSize: 12 },
+  statusHint: { color: theme.amber, fontSize: 13, lineHeight: 18 },
 
   // Upper block — content-sized, one gutter, even gaps. Horizontal padding from insets.
   controls: {

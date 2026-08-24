@@ -17,7 +17,7 @@ Typical uses:
 Rewrite of [LogicGATT](https://github.com/Dishuk/logic-gatt) (a single-machine web app) as
 two native apps connected over local Wi-Fi.
 
-![The LogicGATT desktop controller with the Heart Rate Monitor example loaded — GATT schema on the left, scenario logic in the sandbox editor](docs/screenshot.png)
+![The LogicGATT desktop controller with the Heart Rate Monitor example loaded — the device's GATT schema on the left, the function that builds each measurement packet in the sandbox editor on the right](docs/screenshot.png)
 
 ## How it works
 
@@ -31,7 +31,10 @@ The work is split across two apps:
   and forwards BLE events. It holds no logic.
 
 The two run on the same Wi-Fi network. The desktop runs a WebSocket server and advertises
-over mDNS; the phone discovers it (mDNS or a QR code) and connects.
+over mDNS; the phone discovers it (mDNS or a QR code) and connects. The QR code carries a
+per-run session token and the mDNS record deliberately does not, so a phone that scans the
+code is adopted straight away while anything else on the network has to be approved on the
+desktop first.
 
 ```mermaid
 flowchart LR
@@ -100,7 +103,8 @@ make android                   # build + run the mobile dev build on a device (o
 The mobile app needs a **native dev build** (`expo run:android` / `run:ios`) — BLE peripheral
 support is a native module, so Expo Go cannot run it and there is no released build. Desktop
 and phone must share a Wi-Fi network. In the desktop app, the **Mobile** transport starts the
-server and shows a QR code; the phone connects by scanning it or via mDNS.
+server and shows a QR code; the phone connects by scanning it, or via mDNS followed by an
+approval click on the desktop.
 
 | Target | Description |
 |--------|-------------|

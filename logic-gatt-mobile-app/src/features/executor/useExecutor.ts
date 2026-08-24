@@ -4,15 +4,18 @@ import { createLogger, errorMessage, type LogSink } from '@/lib/logger';
 
 import { createGattBridge, type BridgeState, type GattBridge } from './gattBridge';
 import { ensureBlePermissions } from './permissions';
-import { isPing, parseCommand, type PluginEvent } from './protocol';
+import { admissionState, isPing, parseCommand, type PluginEvent } from './protocol';
 
-export type WsStatus = 'idle' | 'connecting' | 'reconnecting' | 'connected';
+/** `awaiting` = socket open, but the desktop has not admitted this phone yet. */
+export type WsStatus = 'idle' | 'connecting' | 'reconnecting' | 'awaiting' | 'connected';
 
 const PING_INTERVAL_MS = 2000;
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 10000;
 /** Close code the desktop uses when it stops its server (see `connection-server.ts`). */
 const WS_GOING_AWAY = 1001;
+/** Close code for a device the desktop user denied, or never approved in time. */
+const WS_NOT_APPROVED = 4003;
 
 const EMPTY_STATE: BridgeState = {
   advertising: false,
@@ -205,6 +208,20 @@ export function useExecutor(sink: LogSink) {
           return;
         }
 
+        // Admission: the socket can be open while the desktop still withholds the
+        // session. Say so, rather than claiming a link that carries no commands.
+        const admission = admissionState(parsed);
+        if (admission === 'awaiting-approval') {
+          setStatus('awaiting');
+          log.info('waiting for approval on the desktop — scan its QR code to skip this');
+          return;
+        }
+        if (admission === 'approved') {
+          setStatus('connected');
+          log.info('approved by the desktop');
+          return;
+        }
+
         // PluginCommand -> bridge.
         const cmd = parseCommand(raw);
         if (cmd) {
@@ -233,6 +250,12 @@ export function useExecutor(sink: LogSink) {
         if (ce.code === WS_GOING_AWAY) {
           wantConnectedRef.current = false;
           log.info('desktop ended the session');
+        }
+        // 4003 means the desktop refused this device. Retrying would only re-queue
+        // the same prompt, so stop and let the user scan the QR instead.
+        if (ce.code === WS_NOT_APPROVED) {
+          wantConnectedRef.current = false;
+          log.warn('the desktop did not approve this device — scan its QR code to connect');
         }
         if (wantConnectedRef.current) scheduleReconnect(target);
         else setStatus('idle');

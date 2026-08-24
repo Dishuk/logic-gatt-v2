@@ -63,7 +63,8 @@ const connection = createConnectionServer({
 	onConnectionEvent: (e) => sendConnectionEvent(e),
 	onDeviceEvent: (e) => sendDeviceEvent(e),
 });
-console.log(`Connection server ready (starts when Mobile Executor is selected): ${connection.info.url}`);
+// displayUrl, not url: the latter carries the session token once the server starts.
+console.log(`Connection server ready (starts when Mobile Executor is selected): ${connection.info.displayUrl}`);
 
 // Module registry: mobile is the built-in default (the reference module); any modules
 // dropped in `modules/plugins/*` are scanned and loaded. Every module's device events
@@ -104,6 +105,12 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
 		requests: {
 			async getConnectionInfo() {
 				return connection.info;
+			},
+			async approvePeer({ peerId }) {
+				connection.approvePeer(peerId);
+			},
+			async denyPeer({ peerId }) {
+				connection.denyPeer(peerId);
 			},
 			async uploadSchema({ schema, settings }) {
 				await activeOrThrow().uploadSchema(schema, settings);

@@ -467,8 +467,9 @@ function MobileConnectUI({
     <div className="plugin-connect-ui">
       <ConnectionPanel />
       <p className="backend-note">
-        Scan the QR with the LogicGATT phone app (or let it auto-discover on Wi-Fi). The
-        phone connects and this desktop adopts it automatically — nothing to press here.
+        Scan the QR with the LogicGATT phone app and this desktop adopts it automatically —
+        nothing to press here. A phone that finds this desktop over Wi-Fi (mDNS) instead has
+        no scanned code to prove it is yours, so it waits for approval above.
       </p>
     </div>
   )

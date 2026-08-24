@@ -93,8 +93,10 @@ usb-ble-bridge:
 	cd $(USB_BLE_PY) && $(MAKE) build
 
 # --- checks ---
-# `test` = desktop Vitest (only the desktop app has tests). `typecheck` runs
-# tsc --noEmit across both apps.
+# `test` = the desktop suites (only the desktop app has tests): Vitest for the
+# webview under jsdom, then `bun test src/bun` for Bun-side code such as the Wi-Fi
+# transport server, which needs the real Bun.serve and real sockets that jsdom
+# cannot provide. `typecheck` runs tsc --noEmit across both apps.
 test:
 	cd $(DESKTOP) && bun run test
 
