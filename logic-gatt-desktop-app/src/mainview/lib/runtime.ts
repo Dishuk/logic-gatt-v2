@@ -6,6 +6,7 @@
 import { TriggerKind, StepKind, type Schema, type Scenario, type TimerTrigger, type UserFunction } from '../types'
 import type { TransportConnection } from './transport/types'
 import type { SessionState } from './sessionState'
+import { MAX_SCENARIO_DEPTH } from './constants'
 import { executeFunction } from './executor'
 
 type Log = (msg: string) => void
@@ -136,24 +137,39 @@ export function startRuntime(deps: RuntimeDeps): {
     return { buffer, pendingScenarios, responded }
   }
 
-  /** Run pending scenarios requested via ctx.runScenario() */
-  async function runPendingScenarios(names: string[], inputBuffer: Uint8Array | null) {
+  /**
+   * Run pending scenarios requested via ctx.runScenario().
+   *
+   * `depth` is how many chained requests deep we already are. Without the cap a
+   * scenario that asks for itself — or any A→B→A cycle — runs forever, because
+   * each run queues the next one before the previous has returned.
+   */
+  async function runPendingScenarios(names: string[], inputBuffer: Uint8Array | null, depth: number) {
+    if (names.length === 0) return
+    if (depth >= MAX_SCENARIO_DEPTH) {
+      const listed = names.map(n => `"${n}"`).join(', ')
+      log(
+        `[scenario] runScenario chain hit the depth limit (${MAX_SCENARIO_DEPTH}) — not running ${listed}. ` +
+          `Check for a scenario that triggers itself.`
+      )
+      return
+    }
     for (const name of names) {
       if (stopped) break
       const scenario = findScenarioByName(name)
       if (scenario) {
-        await runScenarioSteps(scenario, inputBuffer ?? new Uint8Array())
+        await runScenarioSteps(scenario, inputBuffer ?? new Uint8Array(), depth + 1)
       }
     }
   }
 
   /** Run a scenario's steps (used by timer/startup/manual triggers) */
-  async function runScenarioSteps(scenario: Scenario, inputData: Uint8Array = new Uint8Array()) {
+  async function runScenarioSteps(scenario: Scenario, inputData: Uint8Array = new Uint8Array(), depth = 0) {
     if (stopped) return
     log(`[scenario] "${scenario.name}" triggered`)
 
     const { buffer, pendingScenarios } = await executeSteps(scenario.steps, inputData)
-    await runPendingScenarios(pendingScenarios, buffer)
+    await runPendingScenarios(pendingScenarios, buffer, depth)
   }
 
   /** Run pipeline for char-read/char-write events */
@@ -181,7 +197,7 @@ export function startRuntime(deps: RuntimeDeps): {
         charUuid,
       })
       if (responded) anyResponded = true
-      await runPendingScenarios(pendingScenarios, buffer)
+      await runPendingScenarios(pendingScenarios, buffer, 0)
     }
 
     // Reads are delegated to us for every request (native never auto-answers from a stale
