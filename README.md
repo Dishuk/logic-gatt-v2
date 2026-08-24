@@ -120,18 +120,56 @@ approval click on the desktop.
 
 ### Production-like builds
 
-For a prod build instead of the dev server:
+Prod-like artifacts for local testing, rather than the dev server:
 
 ```bash
 make apk      # mobile: build + install a RELEASE APK on a connected device
-make build    # desktop: canary installer ZIP -> logic-gatt-desktop-app/artifacts/canary-win-x64-LogicGATT-Setup-canary.zip
-make dist     # both of the above
+make build    # desktop: canary installer ZIP -> logic-gatt-desktop-app/artifacts/
 ```
 
 The desktop deliverable is the **zip** in `artifacts/`. Unzipping it and running
 `LogicGATT-Setup.exe` installs to `%LOCALAPPDATA%\com.dishuk.logicgatt.desktop\` and launches. The bare
 `build/.../LogicGATT-Setup-canary.exe` is only a ~400KB extractor stub; it needs the `.installer\`
 payload the zip carries, so it won't run on its own.
+
+### Releases
+
+Cutting a release is a set of independent steps: bumping a version builds nothing, building
+bumps nothing, and neither touches git.
+
+| Target | Description |
+|--------|-------------|
+| `make version` | Interactive version bump across both apps, in lockstep |
+| `make release-desktop` | Stable desktop installer for **this** OS → `release/v<version>/` |
+| `make release-android` | Release APK → `release/v<version>/` |
+| `make release-status` | The current version, and which platforms are staged for it |
+
+`make version` shows the current version, offers the computed patch/minor/major, and accepts a
+literal `X.Y.Z`. It writes the desktop `package.json` and `electrobun.config.ts` plus the mobile
+`app.json`, then prints the commit and tag commands to run by hand. `android.versionCode` is
+derived from the version (1.2.3 → 10203), so it stays monotonic without a separate counter and
+cannot drift if a bump is repeated.
+
+Electrobun builds for the host OS only — it has no cross-compilation — so `make release-desktop`
+runs once per OS. Staging is additive: each host contributes its own asset to the same folder,
+in any order, and `SHA256SUMS` is rebuilt from whatever is present.
+
+```
+release/v1.2.3/
+├── LogicGATT-Setup-1.2.3-win-x64.zip
+├── LogicGATT-Setup-1.2.3-linux-x64.tar.gz
+├── LogicGATT-1.2.3.apk
+└── SHA256SUMS
+```
+
+The Linux installer cannot be produced from a Windows checkout: `node_modules/electrobun` holds
+host-only binaries, so a Linux build needs a Linux checkout (under WSL, on its own filesystem
+rather than a mounted Windows drive). Setting `RELEASE_DIR` points its staging at the other
+checkout's folder, so both land together:
+
+```bash
+RELEASE_DIR=/mnt/d/Embedded/logic-gatt-v2/release make release-desktop
+```
 
 ## Documentation
 
