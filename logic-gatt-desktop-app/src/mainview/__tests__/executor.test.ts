@@ -1,264 +1,308 @@
 /**
- * Tests for the sandboxed executor — exercises `runSandboxed`, the same code the
- * worker ships, rather than a reimplementation of it.
+ * Tests for the sandbox worker pool (`lib/executor.ts`).
+ *
+ * The behaviour that matters here is isolation: a function that never returns must cost
+ * only its own call. Workers are faked so a test can hang one, answer another, and
+ * inspect exactly which realms were terminated.
  */
 
-import { describe, it, expect } from 'vitest'
-import { runSandboxed, type SandboxResult } from '../lib/sandbox'
-import type { UserVariable } from '../types'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { UserFunction } from '../types'
+import { createSessionState } from '../lib/sessionState'
+import { executeFunction, resetWorkerPool } from '../lib/executor'
+import type { WorkerRequest, WorkerResponse } from '../lib/sandbox.worker'
 
-function vars(...defs: [string, 'hex' | 'u8' | 'u16' | 'u32' | 'string', string][]): UserVariable[] {
-  return defs.map(([name, type, initialValue]) => ({ id: crypto.randomUUID(), name, type, initialValue }))
+/** A `message` event carrying a worker response, without faking the other 28 fields. */
+function messageEvent(data: WorkerResponse): MessageEvent<WorkerResponse> {
+  return { data } as unknown as MessageEvent<WorkerResponse>
 }
 
-function run(body: string, opts: { input?: number[]; variables?: UserVariable[]; scenarioNames?: string[] } = {}) {
-  return runSandboxed({
-    body,
-    input: opts.input ?? [],
-    variables: (opts.variables ?? []).map(v => ({ name: v.name, type: v.type, value: v.initialValue })),
-    scenarioNames: opts.scenarioNames ?? [],
-  })
+/** Stand-in for a sandbox realm: records what it was sent, replies only when told to. */
+class FakeWorker {
+  static live: FakeWorker[] = []
+
+  onmessage: ((e: MessageEvent<WorkerResponse>) => void) | null = null
+  onerror: ((e: { message: string }) => void) | null = null
+  readonly sent: WorkerRequest[] = []
+  terminated = false
+
+  constructor() {
+    FakeWorker.live.push(this)
+  }
+
+  postMessage(request: WorkerRequest) {
+    this.sent.push(request)
+  }
+
+  terminate() {
+    this.terminated = true
+  }
+
+  /** The request this realm is currently working on. */
+  get pending(): WorkerRequest | undefined {
+    return this.sent[this.sent.length - 1]
+  }
+
+  reply(partial: Partial<WorkerResponse> = {}) {
+    const id = this.pending?.id
+    if (id === undefined) throw new Error('nothing was sent to this worker')
+    this.onmessage?.(
+      messageEvent({
+        id,
+        result: null,
+        logs: [],
+        variableUpdates: [],
+        scenarioRequests: [],
+        error: null,
+        ...partial,
+      })
+    )
+  }
+
+  fail(message: string) {
+    this.onerror?.({ message })
+  }
 }
 
-const out = (r: SandboxResult) => (r.result ? new Uint8Array(r.result) : null)
-const msgs = (r: SandboxResult) => r.logs.map(l => l.message)
+function fn(name: string, body = ''): UserFunction {
+  return { id: `fn-${name}`, name, body }
+}
 
-describe('runSandboxed', () => {
-  describe('basic execution', () => {
-    it('should return input unchanged (echo)', () => {
-      expect(out(run('return input;', { input: [0xaa, 0xbb] }))).toEqual(new Uint8Array([0xaa, 0xbb]))
-    })
+/** Lines the runtime would have shown in the Functions terminal tab. */
+function logger() {
+  const lines: string[] = []
+  return { lines, ctx: { log: (m: string) => lines.push(m) } }
+}
 
-    it('should reverse input', () => {
-      const r = run('return new Uint8Array([...input].reverse());', { input: [1, 2, 3] })
-      expect(out(r)).toEqual(new Uint8Array([3, 2, 1]))
-    })
+beforeEach(() => {
+  FakeWorker.live = []
+  vi.stubGlobal('Worker', FakeWorker)
+  vi.useFakeTimers()
+})
 
-    it('should handle empty input', () => {
-      expect(out(run('return input;'))).toEqual(new Uint8Array([]))
-    })
+afterEach(() => {
+  resetWorkerPool()
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
-    it('should transform input (XOR)', () => {
-      const r = run('return new Uint8Array(input.map(b => b ^ 0xFF));', { input: [0x00, 0xff, 0x55] })
-      expect(out(r)).toEqual(new Uint8Array([0xff, 0x00, 0xaa]))
-    })
+describe('isolation between concurrent calls', () => {
+  it('does not disturb a running call when another times out', async () => {
+    const hung = logger()
+    const healthy = logger()
+    const session = createSessionState()
+
+    const hungCall = executeFunction(fn('spins'), new Uint8Array(), hung.ctx, session)
+    // Started later, the way a timer scenario overlaps one already running, so its own
+    // deadline has not arrived when the first call's does.
+    await vi.advanceTimersByTimeAsync(3000)
+    const healthyCall = executeFunction(fn('works'), new Uint8Array([1]), healthy.ctx, session)
+
+    // Two calls at once means two realms — neither waits on the other.
+    expect(FakeWorker.live).toHaveLength(2)
+    const [spinner, worker] = FakeWorker.live
+
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(await hungCall).toEqual({ output: null, scenarioRequests: [] })
+
+    // Only the runaway realm was killed.
+    expect(spinner.terminated).toBe(true)
+    expect(worker.terminated).toBe(false)
+
+    // And the other call still completes normally, afterwards.
+    worker.reply({ result: [0x42] })
+    const result = await healthyCall
+    expect([...(result.output ?? [])]).toEqual([0x42])
   })
 
-  describe('return values', () => {
-    it('should return null when function returns null', () => {
-      expect(out(run('return null;', { input: [0xaa] }))).toBeNull()
-    })
+  it('blames only the function that actually timed out', async () => {
+    const hung = logger()
+    const healthy = logger()
+    const session = createSessionState()
 
-    it('should return null when function has no return', () => {
-      expect(out(run('const x = 1;', { input: [0xaa] }))).toBeNull()
-    })
+    void executeFunction(fn('spins'), new Uint8Array(), hung.ctx, session)
+    await vi.advanceTimersByTimeAsync(3000)
+    void executeFunction(fn('works'), new Uint8Array(), healthy.ctx, session)
+    await vi.advanceTimersByTimeAsync(2500)
 
-    it('should return null and warn for non-Uint8Array return', () => {
-      const r = run('return [1, 2, 3];')
-      expect(out(r)).toBeNull()
-      expect(msgs(r).join()).toContain('non-Uint8Array')
-    })
-
-    it('should return null and warn for string return', () => {
-      const r = run('return "hello";')
-      expect(out(r)).toBeNull()
-      expect(msgs(r).join()).toContain('non-Uint8Array')
-    })
+    expect(hung.lines.join('\n')).toContain('Error in "spins": Execution timed out')
+    // The bug this replaces: every in-flight call reported a timeout of its own.
+    expect(healthy.lines.join('\n')).not.toContain('timed out')
   })
 
-  describe('error handling', () => {
-    it('should catch thrown errors', () => {
-      const r = run('throw new Error("Test error");')
-      expect(out(r)).toBeNull()
-      expect(r.error).toContain('Test error')
-    })
+  it('does not let a slow function hold up an unrelated one', async () => {
+    const a = logger()
+    const b = logger()
+    const session = createSessionState()
 
-    it('should catch syntax errors', () => {
-      const r = run('return {{{')
-      expect(out(r)).toBeNull()
-      expect(r.error).toBeTruthy()
-    })
+    void executeFunction(fn('slow'), new Uint8Array(), a.ctx, session)
+    const quick = executeFunction(fn('quick'), new Uint8Array(), b.ctx, session)
 
-    it('should catch reference errors', () => {
-      const r = run('return undefinedVariable;')
-      expect(out(r)).toBeNull()
-      expect(r.error).toBeTruthy()
-    })
+    const [, second] = FakeWorker.live
+    second.reply({ result: [7] })
 
-    it('should keep logs emitted before a throw', () => {
-      const r = run('console.log("before"); throw new Error("boom");')
-      expect(msgs(r)).toContain('before')
-      expect(r.error).toContain('boom')
-    })
+    // Answered while the first call is still outstanding.
+    expect([...((await quick).output ?? [])]).toEqual([7])
   })
 
-  describe('console logging', () => {
-    it('should capture console.log', () => {
-      expect(msgs(run('console.log("hello"); return input;'))).toContain('hello')
-    })
+  it('fails only its own call when a worker errors', async () => {
+    const a = logger()
+    const b = logger()
+    const session = createSessionState()
 
-    it('should capture console.warn with prefix', () => {
-      expect(msgs(run('console.warn("warning"); return input;'))).toContain('[warn] warning')
-    })
+    const broken = executeFunction(fn('boom'), new Uint8Array(), a.ctx, session)
+    const fine = executeFunction(fn('fine'), new Uint8Array(), b.ctx, session)
+    const [first, second] = FakeWorker.live
 
-    it('should capture console.error with prefix', () => {
-      expect(msgs(run('console.error("error"); return input;'))).toContain('[error] error')
-    })
+    first.fail('realm died')
 
-    it('should capture console.info with prefix', () => {
-      expect(msgs(run('console.info("info"); return input;'))).toContain('[info] info')
-    })
+    expect(await broken).toEqual({ output: null, scenarioRequests: [] })
+    expect(a.lines.join('\n')).toContain('Error in "boom": Worker error: realm died')
+    expect(second.terminated).toBe(false)
 
-    it('should format multiple arguments', () => {
-      expect(msgs(run('console.log("a", 123, true); return input;'))).toContain('a 123 true')
-    })
+    second.reply({ result: [1] })
+    expect([...((await fine).output ?? [])]).toEqual([1])
+    expect(b.lines).toHaveLength(0)
+  })
+})
 
-    it('should stringify objects', () => {
-      expect(msgs(run('console.log({foo: "bar"}); return input;'))).toContain('{"foo":"bar"}')
-    })
+describe('pooling', () => {
+  it('reuses an idle worker rather than spawning per call', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
+
+    const first = executeFunction(fn('a'), new Uint8Array(), ctx, session)
+    expect(FakeWorker.live).toHaveLength(1)
+    FakeWorker.live[0].reply({ result: [1] })
+    await first
+
+    const second = executeFunction(fn('b'), new Uint8Array(), ctx, session)
+    expect(FakeWorker.live).toHaveLength(1)
+    FakeWorker.live[0].reply({ result: [2] })
+    expect([...((await second).output ?? [])]).toEqual([2])
   })
 
-  describe('ctx.getVar', () => {
-    it('should return hex variable as Uint8Array', () => {
-      const r = run("return ctx.getVar('buf');", { variables: vars(['buf', 'hex', 'CA FE']) })
-      expect(out(r)).toEqual(new Uint8Array([0xca, 0xfe]))
-    })
+  it('caps concurrent workers and queues the rest', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
 
-    it('should handle hex without spaces', () => {
-      const r = run("return ctx.getVar('buf');", { variables: vars(['buf', 'hex', 'DEADBEEF']) })
-      expect(out(r)).toEqual(new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
-    })
+    const calls = Array.from({ length: 6 }, (_, i) => executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session))
 
-    it('should return u8 variable as number', () => {
-      const r = run("console.log(ctx.getVar('val'));", { variables: vars(['val', 'u8', '42']) })
-      expect(msgs(r)).toContain('42')
-    })
+    expect(FakeWorker.live).toHaveLength(4)
 
-    it('should return u16 variable as number', () => {
-      const r = run("console.log(ctx.getVar('val'));", { variables: vars(['val', 'u16', '1000']) })
-      expect(msgs(r)).toContain('1000')
-    })
-
-    it('should return u32 variable as number', () => {
-      const r = run("console.log(ctx.getVar('val'));", { variables: vars(['val', 'u32', '100000']) })
-      expect(msgs(r)).toContain('100000')
-    })
-
-    it('should return string variable as string', () => {
-      const r = run("console.log(ctx.getVar('str'));", { variables: vars(['str', 'string', 'hello']) })
-      expect(msgs(r)).toContain('hello')
-    })
-
-    it('should return undefined and warn for unknown variable', () => {
-      const r = run("console.log(String(ctx.getVar('nope')));")
-      expect(msgs(r).join()).toContain('unknown variable')
-      expect(msgs(r)).toContain('undefined')
-    })
+    // Freeing one slot dispatches a queued call into it, without a new realm.
+    FakeWorker.live[0].reply({ result: [0] })
+    await calls[0]
+    expect(FakeWorker.live).toHaveLength(4)
+    expect(FakeWorker.live[0].sent).toHaveLength(2)
   })
 
-  describe('ctx.setVar', () => {
-    it('should set hex variable from Uint8Array', () => {
-      const r = run("ctx.setVar('buf', new Uint8Array([0xAB, 0xCD]));", { variables: vars(['buf', 'hex', '00']) })
-      expect(r.variableUpdates).toEqual([{ name: 'buf', value: 'AB CD' }])
-    })
+  it('replaces a terminated worker for queued work', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
 
-    it('should set u8 variable from number', () => {
-      const r = run("ctx.setVar('val', 255);", { variables: vars(['val', 'u8', '0']) })
-      expect(r.variableUpdates).toEqual([{ name: 'val', value: '255' }])
-    })
+    const calls = Array.from({ length: 5 }, (_, i) => executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session))
+    const spinner = FakeWorker.live[0]
 
-    it('should reject invalid type for hex', () => {
-      const r = run("ctx.setVar('buf', 'not a Uint8Array');", { variables: vars(['buf', 'hex', '00']) })
-      expect(r.variableUpdates).toEqual([])
-      expect(msgs(r).join()).toContain('expected Uint8Array')
-    })
+    await vi.advanceTimersByTimeAsync(6000)
+    await calls[0]
 
-    it('should reject u8 out of range', () => {
-      const r = run("ctx.setVar('val', 256);", { variables: vars(['val', 'u8', '0']) })
-      expect(r.variableUpdates).toEqual([])
-      expect(msgs(r).join()).toContain('out of range')
-    })
+    expect(spinner.terminated).toBe(true)
+    // The queued fifth call still gets a realm to run in.
+    const usable = FakeWorker.live.filter(w => !w.terminated)
+    expect(usable.some(w => w.sent.length > 0)).toBe(true)
+  })
+})
 
-    it('should reject u16 out of range', () => {
-      const r = run("ctx.setVar('val', 65536);", { variables: vars(['val', 'u16', '0']) })
-      expect(r.variableUpdates).toEqual([])
-      expect(msgs(r).join()).toContain('out of range')
-    })
+describe('variables', () => {
+  it('applies a function’s writes before the call settles', async () => {
+    const { ctx } = logger()
+    const session = createSessionState([{ id: 'v1', name: 'count', type: 'u8', initialValue: '1' }])
 
-    it('should reject u32 out of range', () => {
-      const r = run("ctx.setVar('val', 0x100000000);", { variables: vars(['val', 'u32', '0']) })
-      expect(r.variableUpdates).toEqual([])
-      expect(msgs(r).join()).toContain('out of range')
-    })
+    const call = executeFunction(fn('bump'), new Uint8Array(), ctx, session)
+    FakeWorker.live[0].reply({ result: [], variableUpdates: [{ name: 'count', value: '2' }] })
+    await call
 
-    it('should reject non-integer for u8', () => {
-      const r = run("ctx.setVar('val', 3.14);", { variables: vars(['val', 'u8', '0']) })
-      expect(r.variableUpdates).toEqual([])
-      expect(msgs(r).join()).toContain('expected integer')
-    })
-
-    it('should reject non-string for string type', () => {
-      const r = run("ctx.setVar('str', 123);", { variables: vars(['str', 'string', '']) })
-      expect(r.variableUpdates).toEqual([])
-      expect(msgs(r).join()).toContain('expected string')
-    })
-
-    it('should warn for unknown variable', () => {
-      const r = run("ctx.setVar('unknown', 123);")
-      expect(msgs(r).join()).toContain('unknown variable')
-    })
-
-    it('should make a set value visible to a later getVar in the same run', () => {
-      const r = run("ctx.setVar('val', 7); return new Uint8Array([ctx.getVar('val')]);", {
-        variables: vars(['val', 'u8', '0']),
-      })
-      expect(out(r)).toEqual(new Uint8Array([7]))
-    })
+    expect(session.get('count')).toBe('2')
   })
 
-  describe('ctx.log and ctx.runScenario', () => {
-    it('should forward ctx.log messages', () => {
-      expect(msgs(run("ctx.log('test message');"))).toContain('test message')
-    })
+  it('gives a queued call the variables as they are when it starts', async () => {
+    const { ctx } = logger()
+    const session = createSessionState([{ id: 'v1', name: 'count', type: 'u8', initialValue: '1' }])
 
-    it('should queue a known scenario', () => {
-      const r = run("ctx.runScenario('blink');", { scenarioNames: ['blink'] })
-      expect(r.scenarioRequests).toEqual(['blink'])
-    })
+    // Fill every slot, then queue one more behind them.
+    const running = Array.from({ length: 4 }, (_, i) => executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session))
+    const queued = executeFunction(fn('last'), new Uint8Array(), ctx, session)
 
-    it('should reject an unknown scenario', () => {
-      const r = run("ctx.runScenario('nope');", { scenarioNames: ['blink'] })
-      expect(r.scenarioRequests).toEqual([])
-      expect(msgs(r).join()).toContain('unknown scenario')
-    })
+    // The first call rewrites the variable before the queued one is dispatched.
+    FakeWorker.live[0].reply({ result: [], variableUpdates: [{ name: 'count', value: '9' }] })
+    await running[0]
+
+    const dispatched = FakeWorker.live[0].sent[1]
+    expect(dispatched.variables).toEqual([{ name: 'count', type: 'u8', value: '9' }])
+    FakeWorker.live[0].reply({ result: [] })
+    await queued
   })
 
-  describe('reader/writer', () => {
-    it('should read integers of both endiannesses', () => {
-      const r = run(
-        'const rd = reader(input); const a = rd.uint16BE(); const b = rd.uint16LE(); return new Uint8Array([a >> 8, a & 0xff, b & 0xff, b >> 8]);',
-        { input: [0x12, 0x34, 0x56, 0x78] }
+  it('reports a sandbox error against the right function', async () => {
+    const { ctx, lines } = logger()
+    const session = createSessionState()
+
+    const call = executeFunction(fn('bad'), new Uint8Array(), ctx, session)
+    FakeWorker.live[0].reply({ error: 'ReferenceError: nope is not defined' })
+    await call
+
+    expect(lines.join('\n')).toContain('Error in "bad": ReferenceError: nope is not defined')
+  })
+
+  it('forwards sandbox log lines', async () => {
+    const { ctx, lines } = logger()
+    const session = createSessionState()
+
+    const call = executeFunction(fn('chatty'), new Uint8Array(), ctx, session)
+    FakeWorker.live[0].reply({ result: [], logs: [{ level: 'log', message: 'hello' }] })
+    await call
+
+    expect(lines).toContain('hello')
+  })
+
+  it('ignores a reply that arrives after its call was abandoned', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
+
+    const call = executeFunction(fn('late'), new Uint8Array(), ctx, session)
+    const worker = FakeWorker.live[0]
+    const pending = worker.pending!
+
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(await call).toEqual({ output: null, scenarioRequests: [] })
+
+    // The terminated realm answering afterwards must not touch anything.
+    expect(() =>
+      worker.onmessage?.(
+        messageEvent({
+          id: pending.id,
+          result: [1],
+          logs: [],
+          variableUpdates: [{ name: 'count', value: '5' }],
+          scenarioRequests: [],
+          error: null,
+        })
       )
-      expect(out(r)).toEqual(new Uint8Array([0x12, 0x34, 0x56, 0x78]))
-    })
+    ).not.toThrow()
+    expect(session.get('count')).toBeUndefined()
+  })
+})
 
-    it('should track position and remaining', () => {
-      const r = run('const rd = reader(input); rd.skip(2); return new Uint8Array([rd.pos, rd.remaining()]);', {
-        input: [1, 2, 3, 4, 5],
-      })
-      expect(out(r)).toEqual(new Uint8Array([2, 3]))
-    })
+describe('scenario requests', () => {
+  it('passes through what the function queued', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
 
-    it('should build bytes with the writer', () => {
-      const r = run('return writer().uint8(0x01).uint16BE(0x0203).bytes([0x04]).build();')
-      expect(out(r)).toEqual(new Uint8Array([0x01, 0x02, 0x03, 0x04]))
-    })
+    const call = executeFunction(fn('caller'), new Uint8Array(), ctx, session, ['Other'])
+    expect(FakeWorker.live[0].pending?.scenarioNames).toEqual(['Other'])
 
-    it('should round-trip signed values', () => {
-      const r = run(
-        'const rd = reader(writer().int16LE(-2).build()); return new Uint8Array([rd.int16LE() === -2 ? 1 : 0]);'
-      )
-      expect(out(r)).toEqual(new Uint8Array([1]))
-    })
+    FakeWorker.live[0].reply({ result: [], scenarioRequests: ['Other'] })
+    expect((await call).scenarioRequests).toEqual(['Other'])
   })
 })
