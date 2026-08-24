@@ -1,0 +1,118 @@
+/**
+ * The settings dialog and the sections modules contribute to it.
+ */
+
+/* Settings dialog */
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.settings-content .card {
+  margin-bottom: 0;
+}
+
+.settings-content .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.settings-checkbox input[type='checkbox'] {
+  margin: 0;
+}
+
+.settings-checkbox input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+
+.settings-checkbox:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-left: 0.25rem;
+}
+
+/* Named settings groups — "General", then one per module */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-section-title {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.settings-section-subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.settings-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+/* Module-contributed settings sections */
+.module-setting + .module-setting {
+  margin-top: 0.75rem;
+}
+
+.module-setting .settings-hint {
+  display: block;
+  margin: 0.25rem 0 0 1.5rem;
+  font-style: normal;
+  line-height: 1.4;
+}
+
+.module-setting-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.theme-preview {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.theme-preview .cm-editor {
+  font-size: 0.75rem;
+  max-height: 180px;
+}
+
+.theme-preview .cm-scroller {
+  overflow: auto;
+}
+
+.theme-preview .cm-gutters {
+  border-right: 1px solid var(--border-primary);
+}

@@ -1,0 +1,115 @@
+/**
+ * The two resizable columns and their headers.
+ */
+
+/* Two-column panels */
+.panels {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel-left,
+.panel-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Width ratio is driven by --panel-left-basis (set inline from React); defaults to 1:1.
+   The right panel takes whatever space is left. */
+.panel-left {
+  flex: 0 0 var(--panel-left-basis, 50%);
+}
+
+.panel-right {
+  flex: 1 1 0;
+}
+
+/* Draggable divider between the Services and Code Editor panels. */
+.panel-resize-handle {
+  flex: 0 0 6px;
+  cursor: ew-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+}
+
+.panel-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--border-primary);
+}
+
+.panel-resize-handle:hover::before,
+.panel-resize-handle:active::before {
+  background: var(--color-accent);
+  width: 2px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  background: var(--bg-dark);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.panel-header .panel-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.panel-header .panel-header-btn:hover {
+  color: var(--accent-blue);
+  background: none;
+}
+
+.panel-content {
+  flex: 1;
+  min-height: 0;
+  padding: 0.75rem;
+}
+
+.panel-content--scroll {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.panel-content--tabs {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.panel-content.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}

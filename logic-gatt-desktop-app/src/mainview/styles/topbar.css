@@ -1,0 +1,137 @@
+/**
+ * Top bar: the menu bar, the File dropdown, the project name and the toolbar.
+ */
+
+/* Top bar */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* The project name's `margin-right: auto` eats the free space, so space-between
+     cannot separate the left-hand items — they need a real gap. */
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--bg-topbar);
+  border-bottom: 1px solid var(--border-topbar);
+  flex-shrink: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.stop-btn {
+  background: var(--bg-error-btn);
+  color: var(--color-error);
+  border: 1px solid var(--border-error-transparent);
+}
+
+.stop-btn:hover:not(:disabled) {
+  background: var(--bg-error-btn-hover);
+  border-color: var(--color-error);
+}
+
+/* Menu bar. Items are plain labels, not buttons — no border or fill until hovered. */
+.menubar {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.menubar-item {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-content);
+}
+
+.menubar-item:hover:not(:disabled),
+.menubar-item--open {
+  background: var(--bg-button-hover);
+  color: var(--text-primary);
+}
+
+/* Dropdown panel (File menu) */
+.menu-root {
+  position: relative;
+}
+
+.menu-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  padding: 0.25rem 0;
+  background: var(--bg-dark);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  z-index: 100;
+  min-width: 220px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.85rem;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: var(--bg-button-hover);
+}
+
+.menu-item:disabled {
+  opacity: 0.4;
+}
+
+.menu-shortcut {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 0.25rem 0;
+  background: var(--border-primary);
+}
+
+.menu-label {
+  padding: 0.35rem 0.75rem 0.2rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+button {
+  background: var(--bg-button);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  padding: 0.35rem 0.7rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled) {
+  background: var(--bg-button-hover);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

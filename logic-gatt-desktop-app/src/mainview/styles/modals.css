@@ -1,0 +1,547 @@
+/**
+ * Every dialog: the shared header, help, the function API reference, the
+ * transport picker, settings, and the connect forms modules contribute.
+ */
+
+/* Help modal */
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.help-modal {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px var(--modal-shadow);
+}
+
+/* Shared modal header/close — used by the help, API, and transport modals. */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.modal-header h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--text-primary);
+  background: none;
+}
+
+.modal-header .back-button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  font-size: 1rem;
+  border-radius: var(--radius-sm);
+}
+
+.modal-header .back-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.help-content {
+  padding: 1rem;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.help-content section {
+  margin-bottom: 1.25rem;
+}
+
+.help-content section:last-child {
+  margin-bottom: 0;
+}
+
+.help-content h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent-blue);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.help-content p {
+  color: var(--text-secondary);
+}
+
+.help-content ol,
+.help-content ul {
+  margin-left: 1.25rem;
+  color: var(--text-content);
+}
+
+.help-content li {
+  margin-bottom: 0.4rem;
+}
+
+.help-content dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+}
+
+.help-content dt {
+  font-weight: 600;
+  color: var(--accent-purple);
+}
+
+.help-content dd {
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.help-content code {
+  font-family: monospace;
+  font-size: 0.85em;
+  color: var(--color-type);
+}
+
+/* Function API reference — wider and roomier than the help modal */
+.api-modal {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  width: 92%;
+  max-width: 820px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px var(--modal-shadow);
+}
+
+.api-content {
+  padding: 1.25rem 1.5rem 1.5rem;
+  overflow-y: auto;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-content);
+}
+
+.api-section + .api-section {
+  margin-top: 1.4rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.api-content h3 {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-blue);
+  margin-bottom: 0.75rem;
+}
+
+.api-content p {
+  margin: 0 0 0.4rem;
+  color: var(--text-secondary);
+}
+
+.api-lead {
+  margin-bottom: 0.75rem;
+}
+
+.api-content strong {
+  color: var(--text-primary);
+}
+
+.api-content em {
+  color: var(--accent-blue-light);
+  font-style: normal;
+}
+
+/* Inline code reads as colored monospace text, not a boxed chip — far calmer
+   when a sentence or list has many identifiers in it. */
+.api-content code {
+  font-family: monospace;
+  font-size: 0.85em;
+  color: var(--color-type);
+}
+
+/* Two-column: signature | description */
+.api-defs {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  gap: 0.55rem 1.5rem;
+  align-items: baseline;
+  margin: 0.25rem 0;
+}
+
+.api-defs dt {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.api-defs dd {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.api-defs dt code,
+.api-defs dd code {
+  white-space: normal;
+}
+
+.api-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--text-secondary);
+}
+
+.api-list li {
+  margin-bottom: 0.35rem;
+}
+
+.api-blocked code {
+  color: var(--text-secondary);
+}
+
+/* Read-only CodeMirror example blocks in the reference */
+.api-code {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin: 0.75rem 0;
+}
+
+.api-code .cm-editor {
+  font-size: 0.8rem;
+}
+
+.api-code .cm-scroller {
+  overflow-x: auto;
+}
+
+/* Globals table */
+.api-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.35rem 0;
+}
+
+.api-table th {
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0.3rem 1rem 0.35rem 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.api-table td {
+  padding: 0.4rem 1rem 0.4rem 0;
+  border-bottom: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  vertical-align: baseline;
+}
+
+.api-table tr:last-child td {
+  border-bottom: none;
+}
+
+.api-table td:first-child {
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+.api-link {
+  color: var(--accent-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Trailing glyph marks these as external (open in the OS browser). */
+.api-link::after {
+  content: '↗';
+  margin-left: 0.15em;
+  font-size: 0.8em;
+  opacity: 0.55;
+}
+
+.api-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.api-link:hover::after {
+  opacity: 1;
+}
+
+.help-content strong {
+  color: var(--text-primary);
+}
+
+.help-content em {
+  color: var(--accent-blue-light);
+  font-style: normal;
+}
+
+/* Transport modal */
+.transport-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.transport-modal {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  width: 90%;
+  max-width: 480px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px var(--modal-shadow);
+}
+
+.transport-modal-body {
+  padding: 1rem;
+  /* Scroll vertically only. Without an explicit overflow-x, `overflow-y: auto`
+     computes overflow-x to `auto` too, so any stray wide child produces a
+     horizontal scrollbar. Content is made to wrap, so hidden clips nothing. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+/* Plugin list */
+.plugin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.plugin-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg-medium);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.plugin-card:hover {
+  border-color: var(--accent-blue);
+  background: var(--bg-hover);
+}
+
+.plugin-card.unavailable {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.plugin-card.unavailable:hover {
+  border-color: var(--border-primary);
+  background: var(--bg-medium);
+}
+
+.plugin-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.plugin-info {
+  flex: 1;
+  /* Allow this flex child to shrink below its content width; without this a long
+     description keeps its intrinsic width and overflows the card horizontally. */
+  min-width: 0;
+  /* The card is a <button>, and the global `button { white-space: nowrap }` is
+     INHERITED — it forces the name/description onto one unbreakable line. Reset it
+     here so the text below can actually wrap. This is the real overflow fix. */
+  white-space: normal;
+}
+
+.plugin-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+  /* Let the name + "Default" badge wrap instead of forcing the card wider. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.plugin-description {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  /* Wrap long tokens (URLs, unbroken strings) rather than overflowing. */
+  overflow-wrap: anywhere;
+}
+
+.plugin-unavailable {
+  font-size: 0.75rem;
+  color: var(--color-error);
+  margin-top: 0.25rem;
+}
+
+/* Plugin connect section */
+.connect-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.connect-description {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.connect-requirements {
+  background: var(--bg-medium);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+}
+
+.connect-requirements strong {
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.connect-requirements ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-secondary);
+}
+
+.connect-requirements li {
+  margin-bottom: 0.25rem;
+}
+
+.connect-requirements code {
+  font-family: monospace;
+  font-size: 0.85em;
+  color: var(--color-type);
+}
+
+.connect-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.connect-status .status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+}
+
+.connect-error {
+  background: var(--bg-error);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: var(--color-error);
+}
+
+.connect-button {
+  padding: 0.75rem 1.5rem;
+  background: var(--accent-blue);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.connect-button:hover:not(:disabled) {
+  background: var(--accent-blue-light);
+}
+
+.connect-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.connect-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.connect-back-button {
+  padding: 0.75rem 1.5rem;
+  background: var(--bg-button);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.connect-back-button:hover {
+  background: var(--bg-button-hover);
+  color: var(--text-primary);
+}

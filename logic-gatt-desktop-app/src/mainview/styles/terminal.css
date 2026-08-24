@@ -1,0 +1,92 @@
+/**
+ * The bottom strip: the log view and its resize handle.
+ */
+
+/* Terminal */
+.terminal {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  /* Boundary line is drawn by the resize handle's ::before (see below) so it can
+     highlight on hover, matching the panel divider. */
+  position: relative;
+}
+
+.terminal-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  background: transparent;
+  z-index: 10;
+}
+
+/* Mirrors .panel-resize-handle::before — a hairline that sharpens to the accent
+   on hover, so both dividers look and behave the same. */
+.terminal-resize-handle::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--border-primary);
+}
+
+.terminal-resize-handle:hover::before,
+.terminal-resize-handle:active::before {
+  background: var(--color-accent);
+  height: 2px;
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  background: var(--bg-dark);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.terminal-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.terminal-icon-btn {
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  padding: 0 0.2rem;
+  cursor: pointer;
+  opacity: 0.6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.terminal-icon-btn:hover {
+  opacity: 1;
+}
+
+.terminal-log {
+  flex: 1;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-darkest);
+  font-family: monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-y: auto;
+  color: var(--text-secondary);
+}
