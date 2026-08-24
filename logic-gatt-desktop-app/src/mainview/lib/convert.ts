@@ -6,31 +6,17 @@
  * only place byte order changes the answer — so both readings are shown at once
  * rather than hidden behind a selector.
  *
- * Formats match what the rest of the app produces so results paste straight into hex
- * fields: uppercase space-separated byte pairs (see `hexDump` in lib/runtime.ts and
- * `toSpaced` in components/HexByteInput.tsx), and UTF-8 for text (the encoding
+ * Hex is not spelled out here: it comes from `@shared/hex`, the same module the
+ * runtime, the upload path and every hex field use, so a value converted here pastes
+ * into those fields and means exactly the same bytes. Text is UTF-8 (the encoding
  * `validation.ts` and the function API already use).
- *
- * Parsing tolerates partial input because these run on every keystroke: a trailing
- * half-byte is ignored rather than treated as a whole one, mirroring `parseHexBytes`.
  */
 
+import { formatHex, parseHex } from '@shared/hex'
+
+export { formatHex, parseHex }
+
 export type Endian = 'LE' | 'BE'
-
-// --- hex ---
-
-export function parseHex(raw: string): Uint8Array {
-  const clean = raw.replace(/[^0-9a-fA-F]/g, '')
-  const out: number[] = []
-  for (let i = 0; i + 2 <= clean.length; i += 2) out.push(parseInt(clean.slice(i, i + 2), 16))
-  return new Uint8Array(out)
-}
-
-export function formatHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
-    .join(' ')
-}
 
 // --- binary ---
 

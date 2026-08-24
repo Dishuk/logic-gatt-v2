@@ -84,14 +84,6 @@ export function extractShortUuid(uuid: string): number | null {
 }
 
 /**
- * Parse a hex string (space-separated bytes) into a Uint8Array.
- */
-export function hexStringToBytes(hex: string): Uint8Array {
-  const tokens = hex.trim().split(/\s+/).filter(Boolean)
-  return new Uint8Array(tokens.map((t) => parseInt(t, 16)))
-}
-
-/**
  * Compute a 4-byte schema hash from service/characteristic UUIDs and properties.
  */
 export function computeSchemaHash(

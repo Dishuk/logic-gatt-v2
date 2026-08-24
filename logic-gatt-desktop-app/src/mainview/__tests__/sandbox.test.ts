@@ -45,11 +45,12 @@ describe('parseVarValue', () => {
       expect(result).toEqual(new Uint8Array([0xff]))
     })
 
-    it('should handle odd number of hex chars (zero-pads last nibble)', () => {
-      // 'ABC' -> 'AB' + 'C0' parsed as two bytes, but actually parseInt('C', 16) = 12 = 0x0C
-      // The loop takes pairs: 'AB' -> 0xAB, then 'C' (slice past end) -> parseInt('C', 16) = 0x0C
+    it('should ignore a trailing half-byte', () => {
+      // One shared reader (@shared/hex) for every path, and its rule is that hex is
+      // read in pairs. Nothing is lost in practice: a value typed into a hex field is
+      // committed through normalizeHex, which pads 'ABC' to 'AB 0C' first.
       const result = parseVarValue('hex', 'ABC')
-      expect(result).toEqual(new Uint8Array([0xab, 0x0c]))
+      expect(result).toEqual(new Uint8Array([0xab]))
     })
   })
 

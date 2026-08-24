@@ -14,6 +14,7 @@ import type {
 	DeviceSettings as WireDeviceSettings,
 } from "@logic-gatt/shared";
 import { rpc, onDeviceEvent } from "@/lib/rpc";
+import { parseHex } from "@shared/hex";
 
 export class ElectrobunConnection implements TransportConnection {
 	private eventHandlers = new Set<TransportEventHandler>();
@@ -100,7 +101,7 @@ function toWireSchema(schema: Schema): WireSchema {
 				name: chr.tag || chr.uuid,
 				properties: chr.properties,
 				defaultValue: chr.defaultValue
-					? Array.from(hexStringToBytes(chr.defaultValue))
+					? Array.from(parseHex(chr.defaultValue))
 					: undefined,
 			})),
 		})),
@@ -112,25 +113,9 @@ function toWireSettings(settings: DeviceSettings): WireDeviceSettings {
 		deviceName: settings.deviceName,
 		appearance: settings.appearance,
 		manufacturerData: settings.manufacturerData
-			? Array.from(hexStringToBytes(settings.manufacturerData))
+			? Array.from(parseHex(settings.manufacturerData))
 			: [],
 		serviceUuids16Bit: [],
 	};
 }
 
-/** Parse a hex string (space-separated bytes) into a Uint8Array. */
-function hexStringToBytes(hex: string): Uint8Array {
-	const trimmed = hex.trim();
-	if (!trimmed) return new Uint8Array();
-	const tokens = trimmed.split(/\s+/).filter(Boolean);
-	return new Uint8Array(
-		tokens.map((t) => {
-			const val = parseInt(t, 16);
-			if (Number.isNaN(val)) {
-				console.warn(`[hexStringToBytes] Invalid hex token: "${t}"`);
-				return 0;
-			}
-			return val & 0xff;
-		}),
-	);
-}

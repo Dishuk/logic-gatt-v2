@@ -7,23 +7,10 @@ import { TriggerKind, StepKind, type Schema, type Scenario, type TimerTrigger, t
 import type { TransportConnection } from './transport/types'
 import type { SessionState } from './sessionState'
 import { MAX_SCENARIO_DEPTH } from './constants'
+import { formatHex as hexDump, parseHex } from '@shared/hex'
 import { executeFunction } from './executor'
 
 type Log = (msg: string) => void
-
-function hexDump(data: Uint8Array): string {
-  return Array.from(data)
-    .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
-    .join(' ')
-}
-
-/** Parse a characteristic's stored default value (hex string) into bytes for a fallback read. */
-function parseHexBytes(hex: string): Uint8Array {
-  const clean = hex.replace(/[^0-9a-fA-F]/g, '')
-  const out: number[] = []
-  for (let i = 0; i + 2 <= clean.length; i += 2) out.push(parseInt(clean.slice(i, i + 2), 16))
-  return new Uint8Array(out)
-}
 
 /** Look up a characteristic's defaultValue by UUID (case-insensitive); '' if not found. */
 function findCharDefault(schema: Schema, serviceUuid: string, charUuid: string): string {
@@ -205,7 +192,7 @@ export function startRuntime(deps: RuntimeDeps): {
     // characteristic's configured default — otherwise the central's read stalls until the
     // module's request timeout. This also keeps readable-but-scenario-less chars working.
     if (triggerKind === TriggerKind.CharRead && !anyResponded && !stopped) {
-      const fallback = parseHexBytes(findCharDefault(schema, serviceUuid, charUuid))
+      const fallback = parseHex(findCharDefault(schema, serviceUuid, charUuid))
       try {
         await connection.respondToRead(serviceUuid, charUuid, fallback)
         log(`[runtime] READ ${serviceUuid}/${charUuid} → default [${hexDump(fallback)}]`)

@@ -6,6 +6,7 @@
  */
 
 import type { VarType } from '../types'
+import { formatHex, parseHex } from '@shared/hex'
 
 // ─── Binary Reader/Writer ───────────────────────────────────────────────────
 
@@ -240,12 +241,8 @@ export function createWriter(): BinaryWriter {
 
 export function parseVarValue(type: VarType, raw: string): unknown {
   switch (type) {
-    case 'hex': {
-      const hex = raw.replace(/[^0-9a-fA-F]/g, '')
-      const bytes = []
-      for (let i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.slice(i, i + 2), 16))
-      return new Uint8Array(bytes)
-    }
+    case 'hex':
+      return parseHex(raw)
     case 'u8':
     case 'u16':
     case 'u32':
@@ -256,11 +253,7 @@ export function parseVarValue(type: VarType, raw: string): unknown {
 }
 
 export function serializeVarValue(type: VarType, value: unknown): string {
-  if (type === 'hex' && value instanceof Uint8Array) {
-    return Array.from(value)
-      .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
-      .join(' ')
-  }
+  if (type === 'hex' && value instanceof Uint8Array) return formatHex(value)
   return String(value)
 }
 

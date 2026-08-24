@@ -35,6 +35,17 @@ desktop, the matching scenario runs, and the desktop tells the phone how to resp
 
 Uploading a schema builds the GATT server on the phone and starts advertising.
 
+### Hex values
+
+Every hex field in the app — `defaultValue`, `manufacturerData`, `hex` variables, test
+vectors — is the same format, read by the same code, so a value means the same bytes
+wherever it appears. Digits are read in **pairs**, and anything that is not a hex digit
+is a separator: `"AB CD"`, `"ABCD"` and `"ab-cd"` are all the two bytes `0xAB 0xCD`.
+
+A field commits what was typed as whole bytes, padding a lone trailing digit (`ABC`
+becomes `AB 0C`). In a hand-edited project file a dangling half-byte is ignored rather
+than guessed at, so `"AB C"` reads as one byte.
+
 ---
 
 ## Variables
