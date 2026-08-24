@@ -181,3 +181,20 @@ export function isPing(msg: unknown): msg is PingMessage {
     (msg as { type?: unknown }).type === 'ping'
   );
 }
+
+// --- admission (see the desktop's `connection-server.ts`) --------------------
+
+/**
+ * The desktop adopts a socket straight away when the URL carries the session token
+ * the QR code encodes. A phone that arrived any other way — mDNS discovery, or a QR
+ * saved from an earlier desktop run — is held until the user allows it there, and
+ * hears `awaiting-approval` now and `approved` if they do. No command arrives in
+ * between, so these two only drive what the phone tells the user.
+ */
+export type AdmissionState = 'awaiting-approval' | 'approved';
+
+export function admissionState(msg: unknown): AdmissionState | null {
+  if (typeof msg !== 'object' || msg === null) return null;
+  const type = (msg as { type?: unknown }).type;
+  return type === 'awaiting-approval' || type === 'approved' ? type : null;
+}

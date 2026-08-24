@@ -3,25 +3,14 @@
  * Listens for BLE events from the transport connection and runs matching scenario pipelines.
  */
 
-import { TriggerKind, StepKind, type Schema, type Scenario, type UserFunction, type UserVariable, type SetVariables } from '../types'
+import { TriggerKind, StepKind, type Schema, type Scenario, type TimerTrigger, type UserFunction } from '../types'
 import type { TransportConnection } from './transport/types'
+import type { SessionState } from './sessionState'
+import { MAX_SCENARIO_DEPTH } from './constants'
+import { formatHex as hexDump, parseHex } from '@shared/hex'
 import { executeFunction } from './executor'
 
 type Log = (msg: string) => void
-
-function hexDump(data: Uint8Array): string {
-  return Array.from(data)
-    .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
-    .join(' ')
-}
-
-/** Parse a characteristic's stored default value (hex string) into bytes for a fallback read. */
-function parseHexBytes(hex: string): Uint8Array {
-  const clean = hex.replace(/[^0-9a-fA-F]/g, '')
-  const out: number[] = []
-  for (let i = 0; i + 2 <= clean.length; i += 2) out.push(parseInt(clean.slice(i, i + 2), 16))
-  return new Uint8Array(out)
-}
 
 /** Look up a characteristic's defaultValue by UUID (case-insensitive); '' if not found. */
 function findCharDefault(schema: Schema, serviceUuid: string, charUuid: string): string {
@@ -35,8 +24,8 @@ interface RuntimeDeps {
   schema: Schema
   getScenarios: () => Scenario[]
   getFunctions: () => UserFunction[]
-  getVariables: () => UserVariable[]
-  setVariables: SetVariables
+  /** Live variable values for this session. Never the authored ones. */
+  session: SessionState
   log: Log
   fnLog: Log
   onDisconnect: () => void
@@ -46,9 +35,9 @@ export function startRuntime(deps: RuntimeDeps): {
   stop: () => void
   runScenario: (scenario: Scenario) => Promise<void>
 } {
-  const { connection, schema, getScenarios, getFunctions, getVariables, setVariables, log, fnLog, onDisconnect } = deps
+  const { connection, schema, getScenarios, getFunctions, session, log, fnLog, onDisconnect } = deps
   let stopped = false
-  const timerIntervals: ReturnType<typeof setInterval>[] = []
+  const timers = new Set<ReturnType<typeof setTimeout>>()
 
   /** Get all scenario names for ctx.runScenario() API */
   function getScenarioNames(): string[] {
@@ -76,11 +65,7 @@ export function startRuntime(deps: RuntimeDeps): {
     const pendingScenarios: string[] = []
     let responded = false
 
-    const ctx = {
-      log: fnLog,
-      getVar: () => undefined,
-      setVar: () => {},
-    }
+    const ctx = { log: fnLog }
 
     for (const step of steps) {
       if (stopped) break
@@ -93,14 +78,7 @@ export function startRuntime(deps: RuntimeDeps): {
             buffer = null
             break
           }
-          const result = await executeFunction(
-            fn,
-            buffer ?? new Uint8Array(),
-            ctx,
-            getVariables(),
-            setVariables,
-            getScenarioNames()
-          )
+          const result = await executeFunction(fn, buffer ?? new Uint8Array(), ctx, session, getScenarioNames())
           buffer = result.output
           pendingScenarios.push(...result.scenarioRequests)
           if (!buffer) {
@@ -146,24 +124,39 @@ export function startRuntime(deps: RuntimeDeps): {
     return { buffer, pendingScenarios, responded }
   }
 
-  /** Run pending scenarios requested via ctx.runScenario() */
-  async function runPendingScenarios(names: string[], inputBuffer: Uint8Array | null) {
+  /**
+   * Run pending scenarios requested via ctx.runScenario().
+   *
+   * `depth` is how many chained requests deep we already are. Without the cap a
+   * scenario that asks for itself — or any A→B→A cycle — runs forever, because
+   * each run queues the next one before the previous has returned.
+   */
+  async function runPendingScenarios(names: string[], inputBuffer: Uint8Array | null, depth: number) {
+    if (names.length === 0) return
+    if (depth >= MAX_SCENARIO_DEPTH) {
+      const listed = names.map(n => `"${n}"`).join(', ')
+      log(
+        `[scenario] runScenario chain hit the depth limit (${MAX_SCENARIO_DEPTH}) — not running ${listed}. ` +
+          `Check for a scenario that triggers itself.`
+      )
+      return
+    }
     for (const name of names) {
       if (stopped) break
       const scenario = findScenarioByName(name)
       if (scenario) {
-        await runScenarioSteps(scenario, inputBuffer ?? new Uint8Array())
+        await runScenarioSteps(scenario, inputBuffer ?? new Uint8Array(), depth + 1)
       }
     }
   }
 
   /** Run a scenario's steps (used by timer/startup/manual triggers) */
-  async function runScenarioSteps(scenario: Scenario, inputData: Uint8Array = new Uint8Array()) {
+  async function runScenarioSteps(scenario: Scenario, inputData: Uint8Array = new Uint8Array(), depth = 0) {
     if (stopped) return
     log(`[scenario] "${scenario.name}" triggered`)
 
     const { buffer, pendingScenarios } = await executeSteps(scenario.steps, inputData)
-    await runPendingScenarios(pendingScenarios, buffer)
+    await runPendingScenarios(pendingScenarios, buffer, depth)
   }
 
   /** Run pipeline for char-read/char-write events */
@@ -191,7 +184,7 @@ export function startRuntime(deps: RuntimeDeps): {
         charUuid,
       })
       if (responded) anyResponded = true
-      await runPendingScenarios(pendingScenarios, buffer)
+      await runPendingScenarios(pendingScenarios, buffer, 0)
     }
 
     // Reads are delegated to us for every request (native never auto-answers from a stale
@@ -199,7 +192,7 @@ export function startRuntime(deps: RuntimeDeps): {
     // characteristic's configured default — otherwise the central's read stalls until the
     // module's request timeout. This also keeps readable-but-scenario-less chars working.
     if (triggerKind === TriggerKind.CharRead && !anyResponded && !stopped) {
-      const fallback = parseHexBytes(findCharDefault(schema, serviceUuid, charUuid))
+      const fallback = parseHex(findCharDefault(schema, serviceUuid, charUuid))
       try {
         await connection.respondToRead(serviceUuid, charUuid, fallback)
         log(`[runtime] READ ${serviceUuid}/${charUuid} → default [${hexDump(fallback)}]`)
@@ -246,11 +239,8 @@ export function startRuntime(deps: RuntimeDeps): {
     if (stopped) return
     stopped = true
     unsubscribe()
-    // Clear all timer intervals
-    for (const interval of timerIntervals) {
-      clearInterval(interval)
-    }
-    timerIntervals.length = 0
+    for (const t of timers) clearTimeout(t)
+    timers.clear()
     log('[runtime] Stopped')
   }
 
@@ -262,31 +252,36 @@ export function startRuntime(deps: RuntimeDeps): {
   // Run startup triggers (once, after a short delay to let BLE settle)
   const startupScenarios = scenarios.filter(s => s.enabled && s.trigger.kind === TriggerKind.Startup)
   if (startupScenarios.length > 0) {
-    setTimeout(async () => {
+    const handle = setTimeout(async () => {
+      timers.delete(handle)
       for (const scenario of startupScenarios) {
         if (stopped) break
         await runScenarioSteps(scenario)
       }
     }, 500)
+    timers.add(handle)
   }
 
-  // Set up timer triggers
+  // Set up timer triggers. Which scenarios have timers is fixed at start, but each tick
+  // re-reads the scenario so interval/steps/enabled edits apply without a restart.
   const timerScenarios = scenarios.filter(s => s.enabled && s.trigger.kind === TriggerKind.Timer)
   for (const scenario of timerScenarios) {
-    const trigger = scenario.trigger as { kind: TriggerKind.Timer; intervalMs: number; repeat: boolean }
-    log(`[runtime] Timer "${scenario.name}" every ${trigger.intervalMs}ms`)
+    log(`[runtime] Timer "${scenario.name}" every ${(scenario.trigger as TimerTrigger).intervalMs}ms`)
 
-    if (trigger.repeat) {
-      const interval = setInterval(() => {
-        if (!stopped) runScenarioSteps(scenario)
-      }, trigger.intervalMs)
-      timerIntervals.push(interval)
-    } else {
-      // One-shot timer
-      setTimeout(() => {
-        if (!stopped) runScenarioSteps(scenario)
-      }, trigger.intervalMs)
+    const schedule = (delayMs: number) => {
+      const handle = setTimeout(async () => {
+        timers.delete(handle)
+        if (stopped) return
+        const live = getScenarios().find(s => s.id === scenario.id)
+        const trigger = live?.trigger
+        if (!live || trigger?.kind !== TriggerKind.Timer) return
+        // Awaited so a slow scenario delays the next tick instead of overlapping itself.
+        if (live.enabled) await runScenarioSteps(live)
+        if (!stopped && trigger.repeat) schedule(trigger.intervalMs)
+      }, delayMs)
+      timers.add(handle)
     }
+    schedule((scenario.trigger as TimerTrigger).intervalMs)
   }
 
   return {

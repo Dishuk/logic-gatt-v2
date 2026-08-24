@@ -88,7 +88,10 @@ class BleUartPlugin extends PluginBase {
   private schemaMismatchWarned = false
   private pingInterval: ReturnType<typeof setInterval> | null = null
   private selectedPortPath: string | null = null
-  private ackResolvers = new Map<number, { resolve: () => void; reject: (err: Error) => void; timeoutId: ReturnType<typeof setTimeout> }>()
+  private ackResolvers = new Map<
+    number,
+    { resolve: () => void; reject: (err: Error) => void; timeoutId: ReturnType<typeof setTimeout> }
+  >()
   private isUploading = false
   private isCleaningUp = false
 
@@ -121,7 +124,7 @@ class BleUartPlugin extends PluginBase {
         handler: async () => {
           const ports = await SerialPort.list()
           // Standard select-option format: {value, label, description?}
-          return ports.map((p) => ({
+          return ports.map(p => ({
             value: p.path,
             label: p.path,
             description: p.manufacturer,
@@ -157,7 +160,7 @@ class BleUartPlugin extends PluginBase {
           } catch (err) {
             this.ctx.log(`Warning: Could not verify port exists: ${err instanceof Error ? err.message : err}`)
           }
-          if (availablePorts && !availablePorts.some((p) => p.path === path)) {
+          if (availablePorts && !availablePorts.some(p => p.path === path)) {
             throw new Error('Port does not exist')
           }
 
@@ -200,7 +203,7 @@ class BleUartPlugin extends PluginBase {
       })
 
       await new Promise<void>((resolve, reject) => {
-        this.port!.open((err) => {
+        this.port!.open(err => {
           if (err) reject(err)
           else resolve()
         })
@@ -228,7 +231,7 @@ class BleUartPlugin extends PluginBase {
       })
 
       // Small delay for UART to settle
-      await new Promise((r) => setTimeout(r, UART_SETTLE_DELAY_MS))
+      await new Promise(r => setTimeout(r, UART_SETTLE_DELAY_MS))
 
       // Send device name
       this.ctx.log(`SET_DEVICE_NAME "${settings.deviceName}"`)
@@ -257,7 +260,7 @@ class BleUartPlugin extends PluginBase {
       }
       if (shortUuids.length > 0) {
         const uuidsToSend = shortUuids.slice(0, 2) // Limit to 2 UUIDs to fit in advertising packet
-        this.ctx.log(`SET_ADV_UUIDS [${uuidsToSend.map((u) => '0x' + u.toString(16).padStart(4, '0')).join(', ')}]`)
+        this.ctx.log(`SET_ADV_UUIDS [${uuidsToSend.map(u => '0x' + u.toString(16).padStart(4, '0')).join(', ')}]`)
         await this.sendAndWaitAck(buildSetAdvUuidsFrame(uuidsToSend), CMD_SET_ADV_UUIDS)
       }
 
@@ -452,12 +455,18 @@ class BleUartPlugin extends PluginBase {
 
         // Retry logic
         if (attempt < MAX_RETRY_ATTEMPTS) {
-          this.ctx.log(`Timeout for cmd 0x${expectedCmd.toString(16)}, retrying (attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS})`)
+          this.ctx.log(
+            `Timeout for cmd 0x${expectedCmd.toString(16)}, retrying (attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS})`
+          )
           this.sendAndWaitAck(frame, expectedCmd, attempt + 1)
             .then(resolve)
             .catch(reject)
         } else {
-          reject(new Error(`Timeout waiting for ACK (cmd 0x${expectedCmd.toString(16)}) after ${MAX_RETRY_ATTEMPTS} attempts`))
+          reject(
+            new Error(
+              `Timeout waiting for ACK (cmd 0x${expectedCmd.toString(16)}) after ${MAX_RETRY_ATTEMPTS} attempts`
+            )
+          )
         }
       }, ACK_TIMEOUT_MS)
 
@@ -494,8 +503,8 @@ class BleUartPlugin extends PluginBase {
       this.port.removeAllListeners()
 
       if (this.port.isOpen) {
-        await new Promise<void>((resolve) => {
-          this.port!.close((err) => {
+        await new Promise<void>(resolve => {
+          this.port!.close(err => {
             if (err) this.ctx.log(`Error closing port: ${err.message}`)
             resolve()
           })

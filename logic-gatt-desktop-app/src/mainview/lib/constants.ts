@@ -23,6 +23,13 @@ export const MAX_SERVICES = 8
 export const MAX_CHARS_PER_SERVICE = 16
 
 /**
+ * How far `ctx.runScenario()` may chain before the runtime stops following it.
+ * A scenario that re-triggers itself — directly, or through a cycle — would
+ * otherwise loop until the user hits Stop.
+ */
+export const MAX_SCENARIO_DEPTH = 8
+
+/**
  * Calculate total BLE advertising packet size.
  * Returns the number of bytes needed for the advertising packet.
  */

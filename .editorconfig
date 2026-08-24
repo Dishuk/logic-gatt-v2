@@ -1,0 +1,23 @@
+# Baseline whitespace rules, so an editor gets it right before any formatter runs.
+# The desktop app's authoritative formatter is Prettier (logic-gatt-desktop-app/
+# .prettierrc.json); the mobile app's is expo lint. This file only has to agree.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+# Trailing spaces are a line break in Markdown.
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
+
+[*.{bat,cmd,ps1}]
+end_of_line = crlf

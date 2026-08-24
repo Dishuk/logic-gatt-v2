@@ -1,4 +1,5 @@
 import type { Extension } from '@codemirror/state'
+import { useModalDialog } from '../hooks/useModalDialog'
 import { CodeBlock } from './CodeBlock'
 import { openExternal } from '../lib/rpc'
 
@@ -47,11 +48,21 @@ const WRITER_EXAMPLE = `return writer()
  * `lib/sandbox.worker.ts` (the ground truth for what's injected/blocked).
  */
 export function FunctionApiReference({ onClose, theme }: FunctionApiReferenceProps) {
+  const panelRef = useModalDialog<HTMLDivElement>(onClose)
+
   return (
     <div className="help-overlay" onClick={onClose}>
-      <div className="api-modal" onClick={e => e.stopPropagation()}>
+      <div
+        className="api-modal"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="function-api-title"
+        tabIndex={-1}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>Function API</h2>
+          <h2 id="function-api-title">Function API</h2>
           <button className="modal-close" onClick={onClose}>
             &times;
           </button>
@@ -59,9 +70,10 @@ export function FunctionApiReference({ onClose, theme }: FunctionApiReferencePro
         <div className="api-content">
           <section className="api-section">
             <p className="api-lead">
-              A function transforms bytes. Its body runs in a sandbox with <code>input</code> and a few helpers in scope.
-              Return a <code>Uint8Array</code> to emit bytes, or <code>null</code> for no output. Functions run from a
-              scenario&apos;s <em>Call Function</em> step (with the current buffer) or from the <em>Test</em> tab.
+              A function transforms bytes. Its body runs in a sandbox with <code>input</code> and a few helpers in
+              scope. Return a <code>Uint8Array</code> to emit bytes, or <code>null</code> for no output. Functions run
+              from a scenario&apos;s <em>Call Function</em> step (with the current buffer) or from the <em>Test</em>{' '}
+              tab.
             </p>
             <CodeBlock code={SIGNATURE_EXAMPLE} theme={theme} />
             <dl className="api-defs">
@@ -221,7 +233,8 @@ export function FunctionApiReference({ onClose, theme }: FunctionApiReferencePro
                 </tr>
                 <tr>
                   <td>
-                    <ApiLink href={`${MDN}parseInt`}>parseInt</ApiLink> · <ApiLink href={`${MDN}Number`}>Number</ApiLink>
+                    <ApiLink href={`${MDN}parseInt`}>parseInt</ApiLink> ·{' '}
+                    <ApiLink href={`${MDN}Number`}>Number</ApiLink>
                   </td>
                   <td>Parse and convert numbers.</td>
                 </tr>
@@ -247,7 +260,13 @@ export function FunctionApiReference({ onClose, theme }: FunctionApiReferencePro
               <code>window</code> <code>document</code> <code>fetch</code> <code>XMLHttpRequest</code>{' '}
               <code>WebSocket</code> <code>localStorage</code> <code>sessionStorage</code> <code>indexedDB</code>{' '}
               <code>caches</code> <code>navigator</code> <code>eval</code> <code>importScripts</code>{' '}
-              <code>Notification</code> <code>ServiceWorker</code> <code>SharedWorker</code> — accessing any throws.
+              <code>Notification</code> <code>ServiceWorker</code> <code>SharedWorker</code> <code>globalThis</code>{' '}
+              <code>self</code> <code>Function</code> <code>Worker</code> <code>postMessage</code> — accessing any
+              throws.
+            </p>
+            <p className="api-blocked">
+              Functions run in a worker with these names blocked and the <code>Function</code> constructor sealed, but
+              this is a guardrail against mistakes, not a security boundary — only run project files you trust.
             </p>
           </section>
 

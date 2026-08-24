@@ -1,10 +1,12 @@
 MOBILE := logic-gatt-mobile-app
 DESKTOP := logic-gatt-desktop-app
+USB_BLE_PY := $(DESKTOP)/src/bun/modules/plugins/usb-ble/python
 
 .PHONY: help install install-mobile install-desktop \
         start ios android apk apk-release lint \
         dev hmr build gen-theme \
-        test typecheck dist
+        test typecheck usb-ble-bridge \
+        version release-desktop release-android release-status
 
 help:
 	@echo "logic-gatt-v2 targets:"
@@ -15,7 +17,6 @@ help:
 	@echo "  make ios              - build + run iOS dev build (native BLE)"
 	@echo "  make android          - build + run Android dev build (native BLE)"
 	@echo "  make apk              - build + install RELEASE APK (prod-like local test)"
-	@echo "  make lint             - expo lint"
 	@echo ""
 	@echo "  Desktop (Electrobun - controller / GATT client):"
 	@echo "  make dev              - start the desktop app (electrobun dev --watch)"
@@ -24,14 +25,21 @@ help:
 	@echo ""
 	@echo "  Shared:"
 	@echo "  make gen-theme        - regenerate desktop theme.css from shared/tokens.ts"
+	@echo "  make usb-ble-bridge   - freeze the usb-ble BLE bridge binary (Windows/Linux; run on each OS)"
 	@echo ""
 	@echo "  Checks:"
 	@echo "  make test             - run desktop Vitest suite"
+	@echo "  make lint             - lint + format-check both apps"
 	@echo "  make typecheck        - type-check both apps (tsc --noEmit)"
 	@echo ""
-	@echo "  Prod builds:"
-	@echo "  make dist             - build both LOCAL prod artifacts (install APK on device + desktop canary installer)"
-	@echo "  make apk-release      - build the release APK FILE (no device needed; Gradle)"
+	@echo "  Release (version -> build -> stage; each step stands alone):"
+	@echo "  make version          - interactive version bump across both apps (no build, no git)"
+	@echo "  make release-desktop  - stable desktop installer for THIS OS -> release/v<version>/"
+	@echo "  make release-android  - release APK -> release/v<version>/"
+	@echo "  make release-status   - current version + which platforms are staged"
+	@echo ""
+	@echo "  Windows and Linux installers cannot cross-compile: run make release-desktop"
+	@echo "  once per OS. Both stage into the same release/v<version>/ folder."
 
 # --- setup ---
 install: install-mobile install-desktop
@@ -60,8 +68,11 @@ android:
 apk:
 	cd $(MOBILE) && npx expo run:android --variant release --no-bundler
 
+# Mobile: expo lint. Desktop: eslint for correctness + prettier --check for style
+# (`bun run format` in the desktop app rewrites what --check reports).
 lint:
 	cd $(MOBILE) && npm run lint
+	cd $(DESKTOP) && bun run lint
 
 # --- desktop (Electrobun / Bun) ---
 # `dev` = electrobun --watch (Bun main process only); `hmr` = adds Vite HMR for
@@ -84,9 +95,17 @@ build:
 gen-theme:
 	bun shared/build-css.ts
 
+# --- usb-ble bridge (Windows + Linux) ---
+# Freezes the BLE bridge into a single binary at the plugin's bin/. PyInstaller
+# cannot cross-compile, so run this on each OS being shipped.
+usb-ble-bridge:
+	cd $(USB_BLE_PY) && $(MAKE) build
+
 # --- checks ---
-# `test` = desktop Vitest (only the desktop app has tests). `typecheck` runs
-# tsc --noEmit across both apps.
+# `test` = the desktop suites (only the desktop app has tests): Vitest for the
+# webview under jsdom, then `bun test src/bun` for Bun-side code such as the Wi-Fi
+# transport server, which needs the real Bun.serve and real sockets that jsdom
+# cannot provide. `typecheck` runs tsc --noEmit across both apps.
 test:
 	cd $(DESKTOP) && bun run test
 
@@ -94,10 +113,32 @@ typecheck:
 	cd $(MOBILE) && npm run typecheck
 	cd $(DESKTOP) && bun run typecheck
 
-# --- prod builds ---
-# dist: both apps' prod-like LOCAL artifacts (canary desktop installer + APK
-# installed on a connected device).
-dist: apk build
+# --- release ---
+# Four separate steps, deliberately: bumping the version builds nothing, building
+# bumps nothing, and neither touches git.
+#
+#   make version           bump both apps in lockstep (interactive)
+#   make release-desktop    installer for THIS OS  -> release/v<version>/
+#   make release-android    release APK           -> release/v<version>/
+#   make release-status     what is staged, what is missing
+#
+# electrobun builds for the host OS only (no cross-compilation), so the Windows and
+# Linux installers come from separate runs on each OS. Staging is additive — every
+# host writes its own asset into the same release/v<version>/ folder, so the runs can
+# happen in any order and on any schedule.
+
+version:
+	bun scripts/version.ts
+
+release-desktop:
+	cd $(DESKTOP) && bun run build:stable
+	bun scripts/stage-release.ts desktop
+
+release-android: apk-release
+	bun scripts/stage-release.ts android
+
+release-status:
+	bun scripts/release-status.ts
 
 # apk-release: build the release APK FILE (no device). Syncs the version from
 # app.json via prebuild, then Gradle assembleRelease. Needs the Android SDK + a

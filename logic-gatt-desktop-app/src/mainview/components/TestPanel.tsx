@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import type { UserFunction, UserVariable, UserTest, SetVariables } from '../types'
+import type { UserFunction, UserVariable, UserTest } from '../types'
 import { executeFunction } from '../lib/executor'
+import { createSessionState } from '../lib/sessionState'
 import { Card, CardHeader, CardBody } from './Card'
 import { HexByteInput } from './HexByteInput'
+import { formatHex, hexEquals, parseHex } from '@shared/hex'
 import { ArrowRight, GripVertical } from 'lucide-react'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
@@ -19,26 +21,8 @@ interface TestPanelProps {
   functions: UserFunction[]
   variables: UserVariable[]
   tests: UserTest[]
-  onVariablesChange: SetVariables
   onTestsChange: (tests: UserTest[]) => void
   fnLog: (msg: string) => void
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const clean = hex.replace(/[^0-9a-fA-F]/g, '')
-  const bytes = []
-  for (let i = 0; i < clean.length; i += 2) bytes.push(parseInt(clean.slice(i, i + 2), 16))
-  return new Uint8Array(bytes)
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
-    .join(' ')
-}
-
-function normalizeHex(hex: string): string {
-  return hex.replace(/[^0-9a-fA-F]/g, '').toUpperCase()
 }
 
 type TestResult = { output: string; pass: boolean }
@@ -47,26 +31,25 @@ async function runTest(
   test: UserTest,
   functions: UserFunction[],
   variables: UserVariable[],
-  onVariablesChange: SetVariables,
   fnLog: (msg: string) => void
 ): Promise<TestResult | null> {
   const fn = functions.find(f => f.id === test.functionId)
   if (!fn) return null
-  const input = hexToBytes(test.inputHex)
-  const ctx = {
-    log: fnLog,
-    getVar: () => undefined,
-    setVar: () => {},
-  }
-  fnLog(`--- Run ${fn.name}(${bytesToHex(input) || 'empty'}) ---`)
-  const result = await executeFunction(fn, input, ctx, variables, onVariablesChange)
+  const input = parseHex(test.inputHex)
+  // A throwaway session per test: variable writes stay out of the project and out of
+  // any live device session, and each test starts from the authored values.
+  const session = createSessionState(variables)
+  fnLog(`--- Run ${fn.name}(${formatHex(input) || 'empty'}) ---`)
+  const result = await executeFunction(fn, input, { log: fnLog }, session)
   const out = result.output
-  const outputHex = out ? bytesToHex(out) || '(empty)' : 'null'
+  const outputHex = out ? formatHex(out) || '(empty)' : 'null'
   fnLog(`Result: [${outputHex}]`)
 
   let pass: boolean
   if (test.expectedHex.trim()) {
-    pass = out !== null && normalizeHex(outputHex) === normalizeHex(test.expectedHex)
+    // Compared as bytes, not as the display string: "(empty)" and "null" are prose
+    // that would otherwise be read back as hex digits.
+    pass = out !== null && hexEquals(formatHex(out), test.expectedHex)
     fnLog(pass ? 'PASS' : `FAIL (expected ${test.expectedHex})`)
   } else {
     // No expected value = expecting null or empty output
@@ -194,7 +177,7 @@ function SortableTestEntry({
   )
 }
 
-export function TestPanel({ functions, variables, tests, onVariablesChange, onTestsChange, fnLog }: TestPanelProps) {
+export function TestPanel({ functions, variables, tests, onTestsChange, fnLog }: TestPanelProps) {
   const [results, setResults] = useState<Map<string, TestResult>>(new Map())
   const [running, setRunning] = useState<Set<string>>(new Set())
   const [runningAll, setRunningAll] = useState(false)
@@ -222,7 +205,7 @@ export function TestPanel({ functions, variables, tests, onVariablesChange, onTe
   async function runSingle(test: UserTest) {
     setRunning(prev => new Set(prev).add(test.id))
     try {
-      const result = await runTest(test, functions, variables, onVariablesChange, fnLog)
+      const result = await runTest(test, functions, variables, fnLog)
       if (result) {
         setResults(prev => new Map(prev).set(test.id, result))
       }
@@ -247,7 +230,7 @@ export function TestPanel({ functions, variables, tests, onVariablesChange, onTe
     setRunningAll(true)
     const newResults = new Map<string, TestResult>()
     for (const test of tests) {
-      const result = await runTest(test, functions, variables, onVariablesChange, fnLog)
+      const result = await runTest(test, functions, variables, fnLog)
       if (result) {
         newResults.set(test.id, result)
       }

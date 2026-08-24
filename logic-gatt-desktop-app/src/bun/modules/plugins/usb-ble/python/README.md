@@ -1,59 +1,70 @@
-# USB BLE Backend
+# USB BLE bridge
 
-Simple BLE GATT server that bridges between the frontend and the PC's Bluetooth adapter.
+BLE GATT server that drives the PC's own Bluetooth adapter as a peripheral, bridging it to
+the desktop app over a local WebSocket (`ws://localhost:8766`).
 
-## Requirements
+Shipped as a frozen single-file binary, so no Python installation is needed at runtime.
 
-- Python 3.10+
-- Bluetooth adapter that supports BLE peripheral mode (most Bluetooth 5.0+ adapters work)
+## Platform support
 
-### Platform Support
-
-| Platform | BLE Backend | Notes |
+| Platform | BLE backend | Notes |
 |----------|-------------|-------|
-| Windows 10/11 | WinRT APIs | May require Administrator privileges |
-| macOS 10.15+ | CoreBluetooth | Works out of the box |
-| Linux | BlueZ/D-Bus | Requires `bluez` package and proper permissions |
+| Windows 10/11 | WinRT | May require Administrator privileges |
+| Linux | BlueZ / D-Bus | Requires the `bluez` package and adapter permissions |
 
-## Quick Start
+macOS is not supported by this module — the mobile executor covers that case.
 
-From the plugin directory (`plugins/usb-ble/`):
+An adapter capable of BLE peripheral mode is required; most Bluetooth 5.0+ adapters qualify.
+
+## Building
+
+Requires [uv](https://docs.astral.sh/uv/) on PATH. It fetches the pinned CPython, so no
+system Python install is needed.
 
 ```bash
-# Create venv and install dependencies
-make venv
-
-# Run the backend
-make python
+make usb-ble-bridge     # from the repository root
+make build              # equivalent, from this directory
 ```
 
-**Manual setup:**
+The binary lands at `../bin/logicgatt-blebridge[.exe]` and is picked up automatically by the
+plugin and by `bun run build:canary`.
+
+PyInstaller cannot cross-compile, so this must be run **on each OS being shipped**.
+
+On Linux the resulting binary is bound to the build machine's glibc, so building on the
+oldest supported distribution (or in a manylinux container) keeps it portable.
+
+## Development
+
 ```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate it
-venv\Scripts\activate   # Windows
-source venv/bin/activate # Linux/macOS
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run
-python main.py
+make venv    # create the environment
+make run     # run from source
+make clean
 ```
 
-## How It Works
+With no frozen binary present, the plugin falls back to this venv automatically.
 
-1. The backend starts a WebSocket server on `ws://localhost:8766`
-2. The frontend connects and sends a GATT schema (services/characteristics)
-3. The backend creates a BLE GATT server using the PC's Bluetooth adapter
-4. BLE clients can connect and interact with the GATT server
-5. Read/write/notify events are forwarded to the frontend via WebSocket
+## Why Python 3.11
 
-## WebSocket Protocol
+`bless` 0.3.0 pins `winrt-*` to `2.0.0b1` for Python 3.12+ while also requiring
+`bleak>=1.1.1`, which needs `winrt-* >= 3.1`. Those constraints cannot both be satisfied, so
+3.12+ fails to resolve on Windows. 3.11 additionally has prebuilt `bleak-winrt` wheels, so no
+C++ toolchain is needed.
 
-### Frontend -> Backend
+`pysetupdi` is an undeclared `bless` dependency — its WinRT adapter imports it, but it is
+absent from the package metadata and unpublished on PyPI, hence the pinned git requirement.
+
+## How it works
+
+1. The bridge starts a WebSocket server on `ws://localhost:8766`.
+2. The desktop app connects and sends a GATT schema (services/characteristics).
+3. The bridge builds a BLE GATT server on the PC's Bluetooth adapter.
+4. BLE centrals connect and interact with that server.
+5. Read/write/notify events are forwarded back over the WebSocket.
+
+## WebSocket protocol
+
+### Desktop -> bridge
 
 | Type | Fields | Description |
 |------|--------|-------------|
@@ -65,7 +76,7 @@ python main.py
 | `respond-to-read` | `charUuid`, `data` | Respond to read request |
 | `disconnect` | - | Stop and disconnect |
 
-### Backend -> Frontend
+### Bridge -> desktop
 
 | Type | Fields | Description |
 |------|--------|-------------|
@@ -73,33 +84,20 @@ python main.py
 | `ack` | `command` | Command succeeded |
 | `nack` | `error` | Command failed |
 | `connected` | - | WebSocket connected, BLE ready |
-| `char-write-event` | `charUuid`, `data` | Client wrote to characteristic |
-| `char-read-event` | `charUuid` | Client read from characteristic |
+| `char-write-event` | `charUuid`, `data` | Central wrote to a characteristic |
+| `char-read-event` | `charUuid` | Central read a characteristic |
 
 ## Troubleshooting
 
-### "Bluetooth adapter not found"
-- **Windows**: Ensure Bluetooth is enabled in Settings, check Device Manager
-- **macOS**: Check System Preferences > Bluetooth
-- **Linux**: Run `hciconfig` to list adapters, ensure `bluez` is installed
+**Bluetooth adapter not found**
+- Windows: confirm Bluetooth is enabled in Settings and the adapter appears in Device Manager.
+- Linux: `hciconfig` lists adapters; `bluez` must be installed.
 
-### "Permission denied" or similar
-- **Windows**: Run as Administrator
-- **macOS**: Grant Bluetooth permissions in System Preferences > Security & Privacy
-- **Linux**: Add user to `bluetooth` group: `sudo usermod -aG bluetooth $USER` (re-login required)
+**Permission denied**
+- Windows: the bridge may need to run as Administrator.
+- Linux: adding the user to the `bluetooth` group (`sudo usermod -aG bluetooth $USER`) and
+  re-logging in usually resolves it.
 
-### "BLE peripheral mode not supported"
-- Not all Bluetooth adapters support acting as a GATT server
-- Try a different USB Bluetooth 5.0 dongle
-- **Linux**: Check adapter capabilities with `btmgmt info`
-
-## Building Standalone Executable
-
-To create a single `.exe` file that users can run without installing Python:
-
-```bash
-pip install pyinstaller
-pyinstaller --onefile --name ble-backend main.py
-```
-
-The executable will be in the `dist/` folder.
+**BLE peripheral mode not supported**
+- Not every adapter can act as a GATT server. A different Bluetooth 5.0+ dongle often works.
+- Linux: `btmgmt info` reports adapter capabilities.

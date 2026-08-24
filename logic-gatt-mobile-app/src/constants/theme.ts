@@ -1,7 +1,3 @@
-import '@/global.css';
-
-import { Platform } from 'react-native';
-
 import { colors, spacing } from '@logic-gatt/theme';
 
 /**
@@ -21,9 +17,3 @@ export const theme = {
 } as const;
 
 export const Spacing = spacing;
-
-export const Fonts = Platform.select({
-  ios: { sans: 'system-ui', mono: 'ui-monospace' },
-  default: { sans: 'normal', mono: 'monospace' },
-  web: { sans: 'var(--font-display)', mono: 'var(--font-mono)' },
-})!;

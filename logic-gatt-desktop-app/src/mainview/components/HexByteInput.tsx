@@ -1,18 +1,11 @@
 import type { ChangeEvent, FocusEvent } from 'react'
 import { useState, useRef } from 'react'
+import { normalizeHex } from '@shared/hex'
 
 interface HexByteInputProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
-}
-
-/** Normalise raw hex string into space-separated uppercase byte pairs */
-function toSpaced(raw: string): string {
-  const hex = raw.replace(/[^0-9a-fA-F]/g, '').toUpperCase()
-  const pairs: string[] = []
-  for (let i = 0; i < hex.length; i += 2) pairs.push(hex.slice(i, i + 2))
-  return pairs.join(' ')
 }
 
 export function HexByteInput({ value, onChange, placeholder }: HexByteInputProps) {
@@ -32,7 +25,9 @@ export function HexByteInput({ value, onChange, placeholder }: HexByteInputProps
   }
 
   function handleBlur(_e: FocusEvent<HTMLInputElement>) {
-    onChange(toSpaced(raw))
+    // Commits whole bytes only, padding a lone trailing digit (see @shared/hex), so a
+    // stored value never holds a partial byte for the readers to disagree over.
+    onChange(normalizeHex(raw))
     setFocused(false)
   }
 

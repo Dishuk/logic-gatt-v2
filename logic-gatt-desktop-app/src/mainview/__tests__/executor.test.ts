@@ -1,378 +1,308 @@
 /**
- * Tests for executor and sandbox logic.
- * Tests the synchronous executor and helper functions.
+ * Tests for the sandbox worker pool (`lib/executor.ts`).
+ *
+ * The behaviour that matters here is isolation: a function that never returns must cost
+ * only its own call. Workers are faked so a test can hang one, answer another, and
+ * inspect exactly which realms were terminated.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildContext, executeFunctionSync } from '../lib/executor'
-import type { UserFunction, UserVariable } from '../types'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { UserFunction } from '../types'
+import { createSessionState } from '../lib/sessionState'
+import { executeFunction, resetWorkerPool } from '../lib/executor'
+import type { WorkerRequest, WorkerResponse } from '../lib/sandbox.worker'
 
-// Helper to create a function
-function fn(name: string, body: string): UserFunction {
-  return { id: crypto.randomUUID(), name, body }
+/** A `message` event carrying a worker response, without faking the other 28 fields. */
+function messageEvent(data: WorkerResponse): MessageEvent<WorkerResponse> {
+  return { data } as unknown as MessageEvent<WorkerResponse>
 }
 
-// Helper to create variables
-function vars(...defs: [string, 'hex' | 'u8' | 'u16' | 'u32' | 'string', string][]): UserVariable[] {
-  return defs.map(([name, type, initialValue]) => ({
-    id: crypto.randomUUID(),
-    name,
-    type,
-    initialValue,
-  }))
+/** Stand-in for a sandbox realm: records what it was sent, replies only when told to. */
+class FakeWorker {
+  static live: FakeWorker[] = []
+
+  onmessage: ((e: MessageEvent<WorkerResponse>) => void) | null = null
+  onerror: ((e: { message: string }) => void) | null = null
+  readonly sent: WorkerRequest[] = []
+  terminated = false
+
+  constructor() {
+    FakeWorker.live.push(this)
+  }
+
+  postMessage(request: WorkerRequest) {
+    this.sent.push(request)
+  }
+
+  terminate() {
+    this.terminated = true
+  }
+
+  /** The request this realm is currently working on. */
+  get pending(): WorkerRequest | undefined {
+    return this.sent[this.sent.length - 1]
+  }
+
+  reply(partial: Partial<WorkerResponse> = {}) {
+    const id = this.pending?.id
+    if (id === undefined) throw new Error('nothing was sent to this worker')
+    this.onmessage?.(
+      messageEvent({
+        id,
+        result: null,
+        logs: [],
+        variableUpdates: [],
+        scenarioRequests: [],
+        error: null,
+        ...partial,
+      })
+    )
+  }
+
+  fail(message: string) {
+    this.onerror?.({ message })
+  }
 }
 
-describe('executeFunctionSync', () => {
-  const mockLog = vi.fn()
-  const mockCtx = { log: mockLog, getVar: () => undefined, setVar: () => {} }
+function fn(name: string, body = ''): UserFunction {
+  return { id: `fn-${name}`, name, body }
+}
 
-  beforeEach(() => {
-    mockLog.mockClear()
+/** Lines the runtime would have shown in the Functions terminal tab. */
+function logger() {
+  const lines: string[] = []
+  return { lines, ctx: { log: (m: string) => lines.push(m) } }
+}
+
+beforeEach(() => {
+  FakeWorker.live = []
+  vi.stubGlobal('Worker', FakeWorker)
+  vi.useFakeTimers()
+})
+
+afterEach(() => {
+  resetWorkerPool()
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
+describe('isolation between concurrent calls', () => {
+  it('does not disturb a running call when another times out', async () => {
+    const hung = logger()
+    const healthy = logger()
+    const session = createSessionState()
+
+    const hungCall = executeFunction(fn('spins'), new Uint8Array(), hung.ctx, session)
+    // Started later, the way a timer scenario overlaps one already running, so its own
+    // deadline has not arrived when the first call's does.
+    await vi.advanceTimersByTimeAsync(3000)
+    const healthyCall = executeFunction(fn('works'), new Uint8Array([1]), healthy.ctx, session)
+
+    // Two calls at once means two realms — neither waits on the other.
+    expect(FakeWorker.live).toHaveLength(2)
+    const [spinner, worker] = FakeWorker.live
+
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(await hungCall).toEqual({ output: null, scenarioRequests: [] })
+
+    // Only the runaway realm was killed.
+    expect(spinner.terminated).toBe(true)
+    expect(worker.terminated).toBe(false)
+
+    // And the other call still completes normally, afterwards.
+    worker.reply({ result: [0x42] })
+    const result = await healthyCall
+    expect([...(result.output ?? [])]).toEqual([0x42])
   })
 
-  describe('basic execution', () => {
-    it('should return input unchanged (echo)', () => {
-      const result = executeFunctionSync(fn('echo', 'return input;'), new Uint8Array([0xaa, 0xbb]), mockCtx)
-      expect(result).toEqual(new Uint8Array([0xaa, 0xbb]))
-    })
+  it('blames only the function that actually timed out', async () => {
+    const hung = logger()
+    const healthy = logger()
+    const session = createSessionState()
 
-    it('should reverse input', () => {
-      const result = executeFunctionSync(
-        fn('reverse', 'return new Uint8Array([...input].reverse());'),
-        new Uint8Array([1, 2, 3]),
-        mockCtx
-      )
-      expect(result).toEqual(new Uint8Array([3, 2, 1]))
-    })
+    void executeFunction(fn('spins'), new Uint8Array(), hung.ctx, session)
+    await vi.advanceTimersByTimeAsync(3000)
+    void executeFunction(fn('works'), new Uint8Array(), healthy.ctx, session)
+    await vi.advanceTimersByTimeAsync(2500)
 
-    it('should handle empty input', () => {
-      const result = executeFunctionSync(fn('echo', 'return input;'), new Uint8Array([]), mockCtx)
-      expect(result).toEqual(new Uint8Array([]))
-    })
-
-    it('should transform input (XOR)', () => {
-      const result = executeFunctionSync(
-        fn('xor', 'return new Uint8Array(input.map(b => b ^ 0xFF));'),
-        new Uint8Array([0x00, 0xff, 0x55]),
-        mockCtx
-      )
-      expect(result).toEqual(new Uint8Array([0xff, 0x00, 0xaa]))
-    })
+    expect(hung.lines.join('\n')).toContain('Error in "spins": Execution timed out')
+    // The bug this replaces: every in-flight call reported a timeout of its own.
+    expect(healthy.lines.join('\n')).not.toContain('timed out')
   })
 
-  describe('return values', () => {
-    it('should return null when function returns null', () => {
-      const result = executeFunctionSync(fn('nullFn', 'return null;'), new Uint8Array([0xaa]), mockCtx)
-      expect(result).toBeNull()
-    })
+  it('does not let a slow function hold up an unrelated one', async () => {
+    const a = logger()
+    const b = logger()
+    const session = createSessionState()
 
-    it('should return null when function has no return', () => {
-      const result = executeFunctionSync(fn('noReturn', 'const x = 1;'), new Uint8Array([0xaa]), mockCtx)
-      expect(result).toBeNull()
-    })
+    void executeFunction(fn('slow'), new Uint8Array(), a.ctx, session)
+    const quick = executeFunction(fn('quick'), new Uint8Array(), b.ctx, session)
 
-    it('should return null and log warning for non-Uint8Array return', () => {
-      const result = executeFunctionSync(fn('badReturn', 'return [1, 2, 3];'), new Uint8Array([]), mockCtx)
-      expect(result).toBeNull()
-      expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('non-Uint8Array'))
-    })
+    const [, second] = FakeWorker.live
+    second.reply({ result: [7] })
 
-    it('should return null and log warning for string return', () => {
-      const result = executeFunctionSync(fn('stringReturn', 'return "hello";'), new Uint8Array([]), mockCtx)
-      expect(result).toBeNull()
-      expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('non-Uint8Array'))
-    })
+    // Answered while the first call is still outstanding.
+    expect([...((await quick).output ?? [])]).toEqual([7])
   })
 
-  describe('error handling', () => {
-    it('should catch and log thrown errors', () => {
-      const result = executeFunctionSync(fn('throwFn', 'throw new Error("Test error");'), new Uint8Array([]), mockCtx)
-      expect(result).toBeNull()
-      expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('Test error'))
-    })
+  it('fails only its own call when a worker errors', async () => {
+    const a = logger()
+    const b = logger()
+    const session = createSessionState()
 
-    it('should catch syntax errors', () => {
-      const result = executeFunctionSync(fn('syntaxErr', 'return {{{'), new Uint8Array([]), mockCtx)
-      expect(result).toBeNull()
-      expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('Error'))
-    })
+    const broken = executeFunction(fn('boom'), new Uint8Array(), a.ctx, session)
+    const fine = executeFunction(fn('fine'), new Uint8Array(), b.ctx, session)
+    const [first, second] = FakeWorker.live
 
-    it('should catch reference errors', () => {
-      const result = executeFunctionSync(fn('refErr', 'return undefinedVariable;'), new Uint8Array([]), mockCtx)
-      expect(result).toBeNull()
-      expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('Error'))
-    })
-  })
+    first.fail('realm died')
 
-  describe('console logging', () => {
-    it('should capture console.log', () => {
-      executeFunctionSync(fn('logFn', 'console.log("hello"); return input;'), new Uint8Array([]), mockCtx)
-      expect(mockLog).toHaveBeenCalledWith('hello')
-    })
+    expect(await broken).toEqual({ output: null, scenarioRequests: [] })
+    expect(a.lines.join('\n')).toContain('Error in "boom": Worker error: realm died')
+    expect(second.terminated).toBe(false)
 
-    it('should capture console.warn with prefix', () => {
-      executeFunctionSync(fn('warnFn', 'console.warn("warning"); return input;'), new Uint8Array([]), mockCtx)
-      expect(mockLog).toHaveBeenCalledWith('[warn] warning')
-    })
-
-    it('should capture console.error with prefix', () => {
-      executeFunctionSync(fn('errorFn', 'console.error("error"); return input;'), new Uint8Array([]), mockCtx)
-      expect(mockLog).toHaveBeenCalledWith('[error] error')
-    })
-
-    it('should format multiple arguments', () => {
-      executeFunctionSync(fn('multiLog', 'console.log("a", 123, true); return input;'), new Uint8Array([]), mockCtx)
-      expect(mockLog).toHaveBeenCalledWith('a 123 true')
-    })
-
-    it('should stringify objects', () => {
-      executeFunctionSync(fn('objLog', 'console.log({foo: "bar"}); return input;'), new Uint8Array([]), mockCtx)
-      expect(mockLog).toHaveBeenCalledWith('{"foo":"bar"}')
-    })
+    second.reply({ result: [1] })
+    expect([...((await fine).output ?? [])]).toEqual([1])
+    expect(b.lines).toHaveLength(0)
   })
 })
 
-describe('buildContext', () => {
-  describe('getVar', () => {
-    it('should return hex variable as Uint8Array', () => {
-      const variables = vars(['buf', 'hex', 'CA FE'])
-      const log = vi.fn()
-      const setVars = vi.fn()
-      const ctx = buildContext(variables, setVars, log)
+describe('pooling', () => {
+  it('reuses an idle worker rather than spawning per call', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
 
-      const result = ctx.getVar('buf')
-      expect(result).toEqual(new Uint8Array([0xca, 0xfe]))
-    })
+    const first = executeFunction(fn('a'), new Uint8Array(), ctx, session)
+    expect(FakeWorker.live).toHaveLength(1)
+    FakeWorker.live[0].reply({ result: [1] })
+    await first
 
-    it('should return u8 variable as number', () => {
-      const variables = vars(['val', 'u8', '42'])
-      const ctx = buildContext(variables, vi.fn(), vi.fn())
-
-      expect(ctx.getVar('val')).toBe(42)
-    })
-
-    it('should return u16 variable as number', () => {
-      const variables = vars(['val', 'u16', '1000'])
-      const ctx = buildContext(variables, vi.fn(), vi.fn())
-
-      expect(ctx.getVar('val')).toBe(1000)
-    })
-
-    it('should return u32 variable as number', () => {
-      const variables = vars(['val', 'u32', '100000'])
-      const ctx = buildContext(variables, vi.fn(), vi.fn())
-
-      expect(ctx.getVar('val')).toBe(100000)
-    })
-
-    it('should return string variable as string', () => {
-      const variables = vars(['str', 'string', 'hello'])
-      const ctx = buildContext(variables, vi.fn(), vi.fn())
-
-      expect(ctx.getVar('str')).toBe('hello')
-    })
-
-    it('should return undefined and log for unknown variable', () => {
-      const log = vi.fn()
-      const ctx = buildContext([], vi.fn(), log)
-
-      expect(ctx.getVar('unknown')).toBeUndefined()
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('unknown variable'))
-    })
-
-    it('should handle hex without spaces', () => {
-      const variables = vars(['buf', 'hex', 'DEADBEEF'])
-      const ctx = buildContext(variables, vi.fn(), vi.fn())
-
-      expect(ctx.getVar('buf')).toEqual(new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
-    })
+    const second = executeFunction(fn('b'), new Uint8Array(), ctx, session)
+    expect(FakeWorker.live).toHaveLength(1)
+    FakeWorker.live[0].reply({ result: [2] })
+    expect([...((await second).output ?? [])]).toEqual([2])
   })
 
-  describe('setVar', () => {
-    it('should set hex variable from Uint8Array', () => {
-      const variables = vars(['buf', 'hex', '00'])
-      const setVars = vi.fn()
-      const ctx = buildContext(variables, setVars, vi.fn())
+  it('caps concurrent workers and queues the rest', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
 
-      ctx.setVar('buf', new Uint8Array([0xab, 0xcd]))
+    const calls = Array.from({ length: 6 }, (_, i) => executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session))
 
-      expect(setVars).toHaveBeenCalled()
-      const updated = setVars.mock.calls[0][0]
-      expect(updated[0].initialValue).toBe('AB CD')
-    })
+    expect(FakeWorker.live).toHaveLength(4)
 
-    it('should set u8 variable from number', () => {
-      const variables = vars(['val', 'u8', '0'])
-      const setVars = vi.fn()
-      const ctx = buildContext(variables, setVars, vi.fn())
-
-      ctx.setVar('val', 255)
-
-      const updated = setVars.mock.calls[0][0]
-      expect(updated[0].initialValue).toBe('255')
-    })
-
-    it('should reject invalid type for hex', () => {
-      const variables = vars(['buf', 'hex', '00'])
-      const log = vi.fn()
-      const setVars = vi.fn()
-      const ctx = buildContext(variables, setVars, log)
-
-      ctx.setVar('buf', 'not a Uint8Array')
-
-      expect(setVars).not.toHaveBeenCalled()
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('expected Uint8Array'))
-    })
-
-    it('should reject u8 out of range', () => {
-      const variables = vars(['val', 'u8', '0'])
-      const log = vi.fn()
-      const setVars = vi.fn()
-      const ctx = buildContext(variables, setVars, log)
-
-      ctx.setVar('val', 256)
-
-      expect(setVars).not.toHaveBeenCalled()
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('out of range'))
-    })
-
-    it('should reject u16 out of range', () => {
-      const variables = vars(['val', 'u16', '0'])
-      const log = vi.fn()
-      const setVars = vi.fn()
-      const ctx = buildContext(variables, setVars, log)
-
-      ctx.setVar('val', 65536)
-
-      expect(setVars).not.toHaveBeenCalled()
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('out of range'))
-    })
-
-    it('should reject u32 out of range', () => {
-      const variables = vars(['val', 'u32', '0'])
-      const log = vi.fn()
-      const setVars = vi.fn()
-      const ctx = buildContext(variables, setVars, log)
-
-      ctx.setVar('val', 0x100000000)
-
-      expect(setVars).not.toHaveBeenCalled()
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('out of range'))
-    })
-
-    it('should reject non-integer for u8', () => {
-      const variables = vars(['val', 'u8', '0'])
-      const log = vi.fn()
-      const setVars = vi.fn()
-      const ctx = buildContext(variables, setVars, log)
-
-      ctx.setVar('val', 3.14)
-
-      expect(setVars).not.toHaveBeenCalled()
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('expected integer'))
-    })
-
-    it('should reject non-string for string type', () => {
-      const variables = vars(['str', 'string', ''])
-      const log = vi.fn()
-      const setVars = vi.fn()
-      const ctx = buildContext(variables, setVars, log)
-
-      ctx.setVar('str', 123)
-
-      expect(setVars).not.toHaveBeenCalled()
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('expected string'))
-    })
-
-    it('should log for unknown variable', () => {
-      const log = vi.fn()
-      const ctx = buildContext([], vi.fn(), log)
-
-      ctx.setVar('unknown', 123)
-
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('unknown variable'))
-    })
+    // Freeing one slot dispatches a queued call into it, without a new realm.
+    FakeWorker.live[0].reply({ result: [0] })
+    await calls[0]
+    expect(FakeWorker.live).toHaveLength(4)
+    expect(FakeWorker.live[0].sent).toHaveLength(2)
   })
 
-  describe('log', () => {
-    it('should forward messages to log callback', () => {
-      const log = vi.fn()
-      const ctx = buildContext([], vi.fn(), log)
+  it('replaces a terminated worker for queued work', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
 
-      ctx.log('test message')
+    const calls = Array.from({ length: 5 }, (_, i) => executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session))
+    const spinner = FakeWorker.live[0]
 
-      expect(log).toHaveBeenCalledWith('test message')
-    })
+    await vi.advanceTimersByTimeAsync(6000)
+    await calls[0]
+
+    expect(spinner.terminated).toBe(true)
+    // The queued fifth call still gets a realm to run in.
+    const usable = FakeWorker.live.filter(w => !w.terminated)
+    expect(usable.some(w => w.sent.length > 0)).toBe(true)
   })
 })
 
-describe('integration: executeFunctionSync with context', () => {
-  it('should read and write variables', () => {
-    const variables = vars(['counter', 'u32', '5'])
-    const setVars = vi.fn()
-    const log = vi.fn()
-    const ctx = buildContext(variables, setVars, log)
+describe('variables', () => {
+  it('applies a function’s writes before the call settles', async () => {
+    const { ctx } = logger()
+    const session = createSessionState([{ id: 'v1', name: 'count', type: 'u8', initialValue: '1' }])
 
-    const result = executeFunctionSync(
-      fn(
-        'increment',
-        `
-        const val = ctx.getVar('counter');
-        ctx.setVar('counter', val + 1);
-        return new Uint8Array([val + 1]);
-      `
-      ),
-      new Uint8Array([]),
-      ctx
-    )
+    const call = executeFunction(fn('bump'), new Uint8Array(), ctx, session)
+    FakeWorker.live[0].reply({ result: [], variableUpdates: [{ name: 'count', value: '2' }] })
+    await call
 
-    expect(result).toEqual(new Uint8Array([6]))
-    expect(setVars).toHaveBeenCalled()
+    expect(session.get('count')).toBe('2')
   })
 
-  it('should handle multiple variable operations', () => {
-    const variables = vars(['a', 'u8', '10'], ['b', 'u8', '20'])
-    const setVars = vi.fn()
-    const log = vi.fn()
-    const ctx = buildContext(variables, setVars, log)
+  it('gives a queued call the variables as they are when it starts', async () => {
+    const { ctx } = logger()
+    const session = createSessionState([{ id: 'v1', name: 'count', type: 'u8', initialValue: '1' }])
 
-    const result = executeFunctionSync(
-      fn(
-        'sum',
-        `
-        const a = ctx.getVar('a');
-        const b = ctx.getVar('b');
-        return new Uint8Array([a + b]);
-      `
-      ),
-      new Uint8Array([]),
-      ctx
-    )
+    // Fill every slot, then queue one more behind them.
+    const running = Array.from({ length: 4 }, (_, i) => executeFunction(fn(`f${i}`), new Uint8Array(), ctx, session))
+    const queued = executeFunction(fn('last'), new Uint8Array(), ctx, session)
 
-    expect(result).toEqual(new Uint8Array([30]))
+    // The first call rewrites the variable before the queued one is dispatched.
+    FakeWorker.live[0].reply({ result: [], variableUpdates: [{ name: 'count', value: '9' }] })
+    await running[0]
+
+    const dispatched = FakeWorker.live[0].sent[1]
+    expect(dispatched.variables).toEqual([{ name: 'count', type: 'u8', value: '9' }])
+    FakeWorker.live[0].reply({ result: [] })
+    await queued
   })
 
-  it('should handle hex buffer manipulation', () => {
-    const variables = vars(['buf', 'hex', 'AA BB CC'])
-    const setVars = vi.fn()
-    const log = vi.fn()
-    const ctx = buildContext(variables, setVars, log)
+  it('reports a sandbox error against the right function', async () => {
+    const { ctx, lines } = logger()
+    const session = createSessionState()
 
-    const result = executeFunctionSync(
-      fn(
-        'appendInput',
-        `
-        const buf = ctx.getVar('buf');
-        const result = new Uint8Array(buf.length + input.length);
-        result.set(buf);
-        result.set(input, buf.length);
-        return result;
-      `
-      ),
-      new Uint8Array([0xdd, 0xee]),
-      ctx
-    )
+    const call = executeFunction(fn('bad'), new Uint8Array(), ctx, session)
+    FakeWorker.live[0].reply({ error: 'ReferenceError: nope is not defined' })
+    await call
 
-    expect(result).toEqual(new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd, 0xee]))
+    expect(lines.join('\n')).toContain('Error in "bad": ReferenceError: nope is not defined')
+  })
+
+  it('forwards sandbox log lines', async () => {
+    const { ctx, lines } = logger()
+    const session = createSessionState()
+
+    const call = executeFunction(fn('chatty'), new Uint8Array(), ctx, session)
+    FakeWorker.live[0].reply({ result: [], logs: [{ level: 'log', message: 'hello' }] })
+    await call
+
+    expect(lines).toContain('hello')
+  })
+
+  it('ignores a reply that arrives after its call was abandoned', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
+
+    const call = executeFunction(fn('late'), new Uint8Array(), ctx, session)
+    const worker = FakeWorker.live[0]
+    const pending = worker.pending!
+
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(await call).toEqual({ output: null, scenarioRequests: [] })
+
+    // The terminated realm answering afterwards must not touch anything.
+    expect(() =>
+      worker.onmessage?.(
+        messageEvent({
+          id: pending.id,
+          result: [1],
+          logs: [],
+          variableUpdates: [{ name: 'count', value: '5' }],
+          scenarioRequests: [],
+          error: null,
+        })
+      )
+    ).not.toThrow()
+    expect(session.get('count')).toBeUndefined()
+  })
+})
+
+describe('scenario requests', () => {
+  it('passes through what the function queued', async () => {
+    const { ctx } = logger()
+    const session = createSessionState()
+
+    const call = executeFunction(fn('caller'), new Uint8Array(), ctx, session, ['Other'])
+    expect(FakeWorker.live[0].pending?.scenarioNames).toEqual(['Other'])
+
+    FakeWorker.live[0].reply({ result: [], scenarioRequests: ['Other'] })
+    expect((await call).scenarioRequests).toEqual(['Other'])
   })
 })

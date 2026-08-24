@@ -1,2 +1,8 @@
-bless>=0.2.5
-websockets>=12.0
+# Requires Python 3.11 on Windows: bless 0.3.0 pins winrt-* to 2.0.0b1 for 3.12+,
+# which contradicts its own bleak>=1.1.1 (that needs winrt-* >= 3.1).
+bless==0.3.0
+websockets==17.0.1
+
+# Undeclared bless dependency — its WinRT adapter imports pysetupdi, which is not
+# published on PyPI. Windows only.
+pysetupdi @ git+https://github.com/gwangyi/pysetupdi.git@4b48c1da115f571e82876ee7659e78ec4d1e2ae9 ; sys_platform == "win32"

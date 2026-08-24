@@ -14,40 +14,42 @@
  */
 
 // DWMWA_USE_IMMERSIVE_DARK_MODE — attribute id on Windows 10 20H1+ / Windows 11.
-const DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+const DWMWA_USE_IMMERSIVE_DARK_MODE = 20
 
 export function applyWindowsDarkTitleBar(windowTitle: string): void {
-  if (process.platform !== 'win32') return;
+  if (process.platform !== 'win32') return
 
   try {
-    // Imported lazily so non-Windows builds never touch bun:ffi.
-    const { dlopen, ptr } = require('bun:ffi');
+    // Imported lazily so non-Windows builds never touch bun:ffi. `require` is what
+    // makes that lazy — a static import would load it on every platform.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { dlopen, ptr } = require('bun:ffi')
 
     const user32 = dlopen('user32.dll', {
       FindWindowW: { args: ['ptr', 'ptr'], returns: 'ptr' },
-    });
+    })
     const dwmapi = dlopen('dwmapi.dll', {
       DwmSetWindowAttribute: { args: ['ptr', 'u32', 'ptr', 'u32'], returns: 'i32' },
-    });
+    })
 
     // Win32 wide-string window title, NUL-terminated (UTF-16LE).
-    const titleBuf = Buffer.from(windowTitle + '\0', 'utf16le');
+    const titleBuf = Buffer.from(windowTitle + '\0', 'utf16le')
     // A DWORD TRUE (little-endian).
-    const enable = new Uint8Array([1, 0, 0, 0]);
+    const enable = new Uint8Array([1, 0, 0, 0])
 
-    let attempts = 0;
+    let attempts = 0
     const tryApply = () => {
-      attempts++;
+      attempts++
       // lpClassName = NULL, lpWindowName = our title.
-      const hwnd = user32.symbols.FindWindowW(null, ptr(titleBuf));
+      const hwnd = user32.symbols.FindWindowW(null, ptr(titleBuf))
       if (hwnd) {
-        dwmapi.symbols.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ptr(enable), 4);
-        return;
+        dwmapi.symbols.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ptr(enable), 4)
+        return
       }
-      if (attempts < 20) setTimeout(tryApply, 100);
-    };
-    tryApply();
+      if (attempts < 20) setTimeout(tryApply, 100)
+    }
+    tryApply()
   } catch (err) {
-    console.warn(`dark title bar not applied: ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`dark title bar not applied: ${err instanceof Error ? err.message : String(err)}`)
   }
 }

@@ -1,0 +1,8 @@
+dist/
+build/
+artifacts/
+node_modules/
+vendor/
+bun.lock
+# Bundled third-party bridge: a vendored Python tree, not ours to format.
+src/bun/modules/plugins/usb-ble/python/

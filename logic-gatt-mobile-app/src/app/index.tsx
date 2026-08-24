@@ -1,23 +1,30 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
 import { type ReactNode, useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
 import { useMdns } from '@/features/connection/useMdns';
-import { useExecutor } from '@/features/executor/useExecutor';
+import { useExecutor, type WsStatus } from '@/features/executor/useExecutor';
+import { useScreenAwake } from '@/features/executor/useScreenAwake';
 import { createLogger, formatLogTime, type LogEntry, type LogLevel, type LogSink } from '@/lib/logger';
 
 // Single spacing system used everywhere so edges line up and rhythm is even.
 const PAD = 12; // horizontal gutter + vertical padding for every block
 const GAP = 8; // space between stacked items
 
-const STATUS_COLOR: Record<string, string> = {
+const STATUS_COLOR: Record<WsStatus, string> = {
   idle: theme.textSecondary,
   connecting: theme.amber,
+  reconnecting: theme.amber,
+  awaiting: theme.amber,
   connected: theme.greenBright,
-  error: theme.red,
+};
+
+/** The status word alone doesn't say what to do about it; these lines do. */
+const STATUS_HINT: Partial<Record<WsStatus, string>> = {
+  awaiting: 'Allow this phone on the desktop, or scan its QR code instead.',
 };
 
 // Log-line color by severity (debug never reaches the panel; listed for completeness).
@@ -37,6 +44,7 @@ export default function ConnectScreen() {
 
   const exec = useExecutor(sink);
   const mdns = useMdns(sink);
+  const awake = useScreenAwake(ui);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
 
@@ -73,6 +81,8 @@ export default function ConnectScreen() {
   );
 
   const connected = exec.status === 'connected';
+  // Anything but idle keeps the session UI up, so a retry loop can still be cancelled.
+  const active = exec.status !== 'idle';
   const insets = useSafeAreaInsets();
   const hPad = { paddingLeft: PAD + insets.left, paddingRight: PAD + insets.right };
 
@@ -114,7 +124,7 @@ export default function ConnectScreen() {
 
       {/* Upper block — compact, content-sized. */}
       <View style={[styles.controls, hPad]}>
-        {!connected ? (
+        {!active ? (
           <>
             <Pressable style={[styles.btn, styles.btnPrimary]} onPress={openScanner}>
               <Text style={styles.btnText}>Scan QR code</Text>
@@ -133,6 +143,10 @@ export default function ConnectScreen() {
           </>
         ) : (
           <>
+            {STATUS_HINT[exec.status] ? (
+              <Text style={styles.statusHint}>{STATUS_HINT[exec.status]}</Text>
+            ) : null}
+
             {exec.exec.advError ? (
               <View style={styles.advErrorBox}>
                 <Text style={styles.advErrorTitle}>Advertising failed</Text>
@@ -170,10 +184,20 @@ export default function ConnectScreen() {
             </View>
 
             <Pressable style={[styles.btn, styles.btnError]} onPress={exec.disconnect}>
-              <Text style={styles.btnText}>Disconnect</Text>
+              <Text style={styles.btnText}>{connected ? 'Disconnect' : 'Cancel'}</Text>
             </Pressable>
           </>
         )}
+
+        <View style={styles.awakeRow}>
+          <Text style={styles.awakeLabel}>Keep screen awake</Text>
+          <Switch
+            value={awake.enabled}
+            onValueChange={awake.toggle}
+            trackColor={{ false: theme.bgButton, true: theme.accentBlue }}
+            thumbColor={theme.textPrimary}
+          />
+        </View>
       </View>
 
       {/* Lower block — fills remaining height; bottom inset padding keeps the scroll
@@ -275,6 +299,7 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: GAP },
   dot: { width: 9, height: 9, borderRadius: 5 },
   statusText: { color: theme.textSecondary, fontFamily: 'monospace', fontSize: 12 },
+  statusHint: { color: theme.amber, fontSize: 13, lineHeight: 18 },
 
   // Upper block — content-sized, one gutter, even gaps. Horizontal padding from insets.
   controls: {
@@ -318,6 +343,20 @@ const styles = StyleSheet.create({
   execLabel: { color: theme.textSecondary, fontSize: 13 },
   execValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
   execValue: { color: theme.textPrimary, fontWeight: '600', fontSize: 13, fontFamily: 'monospace' },
+
+  awakeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: PAD,
+    paddingRight: GAP,
+    paddingVertical: 2,
+    backgroundColor: theme.bgDarkest,
+    borderWidth: 1,
+    borderColor: theme.borderPrimary,
+    borderRadius: 6,
+  },
+  awakeLabel: { color: theme.textSecondary, fontSize: 13 },
 
   serviceItem: {
     paddingHorizontal: PAD,

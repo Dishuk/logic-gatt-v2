@@ -1,0 +1,30 @@
+/**
+ * Small shared helpers with no home of their own.
+ */
+
+/* Utility classes */
+.w-full {
+  width: 100%;
+}
+
+.ml-auto {
+  margin-left: auto;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.input--narrow {
+  width: 80px;
+}
+
+.inline-label {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}

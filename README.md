@@ -17,7 +17,7 @@ Typical uses:
 Rewrite of [LogicGATT](https://github.com/Dishuk/logic-gatt) (a single-machine web app) as
 two native apps connected over local Wi-Fi.
 
-![The LogicGATT desktop controller with the Heart Rate Monitor example loaded — GATT schema on the left, scenario logic in the sandbox editor](docs/screenshot.png)
+![The LogicGATT desktop controller with the Heart Rate Monitor example loaded — the device's GATT schema on the left, the function that builds each measurement packet in the sandbox editor on the right](docs/screenshot.png)
 
 ## How it works
 
@@ -31,7 +31,10 @@ The work is split across two apps:
   and forwards BLE events. It holds no logic.
 
 The two run on the same Wi-Fi network. The desktop runs a WebSocket server and advertises
-over mDNS; the phone discovers it (mDNS or a QR code) and connects.
+over mDNS; the phone discovers it (mDNS or a QR code) and connects. The QR code carries a
+per-run session token and the mDNS record deliberately does not, so a phone that scans the
+code is adopted straight away while anything else on the network has to be approved on the
+desktop first.
 
 ```mermaid
 flowchart LR
@@ -57,6 +60,17 @@ Runtime flow:
 
 All device behavior is decided on the desktop; the phone only carries it out. This mirrors
 the original app, where logic ran in the browser and an ESP32/adapter was the peripheral.
+
+### Alternative radios
+
+The phone needs no extra setup and is the default. Two optional transport modules can take
+its place, selected from the desktop app's transport picker:
+
+- **usb-ble** — the PC's own Bluetooth adapter, driven by a bundled bridge binary. Windows
+  and Linux only, and only present when built with `make usb-ble-bridge`; the module reports
+  itself unavailable otherwise. See
+  [its README](logic-gatt-desktop-app/src/bun/modules/plugins/usb-ble/python/README.md).
+- **ble-uart** — an MCU (ESP32, nRF52) attached over USB serial, acting as the peripheral.
 
 ## Repository structure
 
@@ -89,7 +103,8 @@ make android                   # build + run the mobile dev build on a device (o
 The mobile app needs a **native dev build** (`expo run:android` / `run:ios`) — BLE peripheral
 support is a native module, so Expo Go cannot run it and there is no released build. Desktop
 and phone must share a Wi-Fi network. In the desktop app, the **Mobile** transport starts the
-server and shows a QR code; the phone connects by scanning it or via mDNS.
+server and shows a QR code; the phone connects by scanning it, or via mDNS followed by an
+approval click on the desktop.
 
 | Target | Description |
 |--------|-------------|
@@ -101,21 +116,60 @@ server and shows a QR code; the phone connects by scanning it or via mDNS.
 | `make test` | Run the desktop Vitest suite |
 | `make build` | Build the desktop canary installer ZIP (`logic-gatt-desktop-app/artifacts/canary-win-x64-LogicGATT-Setup-canary.zip`) |
 | `make gen-theme` | Regenerate desktop `theme.css` from shared tokens |
+| `make usb-ble-bridge` | Freeze the optional usb-ble bridge binary (Windows/Linux; needs [uv](https://docs.astral.sh/uv/)) |
 
 ### Production-like builds
 
-For a prod build instead of the dev server:
+Prod-like artifacts for local testing, rather than the dev server:
 
 ```bash
 make apk      # mobile: build + install a RELEASE APK on a connected device
-make build    # desktop: canary installer ZIP -> logic-gatt-desktop-app/artifacts/canary-win-x64-LogicGATT-Setup-canary.zip
-make dist     # both of the above
+make build    # desktop: canary installer ZIP -> logic-gatt-desktop-app/artifacts/
 ```
 
 The desktop deliverable is the **zip** in `artifacts/`. Unzipping it and running
 `LogicGATT-Setup.exe` installs to `%LOCALAPPDATA%\com.dishuk.logicgatt.desktop\` and launches. The bare
 `build/.../LogicGATT-Setup-canary.exe` is only a ~400KB extractor stub; it needs the `.installer\`
 payload the zip carries, so it won't run on its own.
+
+### Releases
+
+Cutting a release is a set of independent steps: bumping a version builds nothing, building
+bumps nothing, and neither touches git.
+
+| Target | Description |
+|--------|-------------|
+| `make version` | Interactive version bump across both apps, in lockstep |
+| `make release-desktop` | Stable desktop installer for **this** OS → `release/v<version>/` |
+| `make release-android` | Release APK → `release/v<version>/` |
+| `make release-status` | The current version, and which platforms are staged for it |
+
+`make version` shows the current version, offers the computed patch/minor/major, and accepts a
+literal `X.Y.Z`. It writes the desktop `package.json` and `electrobun.config.ts` plus the mobile
+`app.json`, then prints the commit and tag commands to run by hand. `android.versionCode` is
+derived from the version (1.2.3 → 10203), so it stays monotonic without a separate counter and
+cannot drift if a bump is repeated.
+
+Electrobun builds for the host OS only — it has no cross-compilation — so `make release-desktop`
+runs once per OS. Staging is additive: each host contributes its own asset to the same folder,
+in any order, and `SHA256SUMS` is rebuilt from whatever is present.
+
+```
+release/v1.2.3/
+├── LogicGATT-Setup-1.2.3-win-x64.zip
+├── LogicGATT-Setup-1.2.3-linux-x64.tar.gz
+├── LogicGATT-1.2.3.apk
+└── SHA256SUMS
+```
+
+The Linux installer cannot be produced from a Windows checkout: `node_modules/electrobun` holds
+host-only binaries, so a Linux build needs a Linux checkout (under WSL, on its own filesystem
+rather than a mounted Windows drive). Setting `RELEASE_DIR` points its staging at the other
+checkout's folder, so both land together:
+
+```bash
+RELEASE_DIR=/mnt/d/Embedded/logic-gatt-v2/release make release-desktop
+```
 
 ## Documentation
 

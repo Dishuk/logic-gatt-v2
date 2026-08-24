@@ -1,0 +1,153 @@
+/**
+ * Tests for the Convert tab's value conversions.
+ */
+
+import { describe, it, expect } from 'vitest'
+import {
+  parseHex,
+  formatHex,
+  parseBinary,
+  formatBinary,
+  encodeText,
+  decodeText,
+  toPrintable,
+  bytesToDecimal,
+  decimalToBytes,
+} from '../lib/convert'
+
+const bytes = (...b: number[]) => new Uint8Array(b)
+
+// TextEncoder returns a Uint8Array from the environment's realm, which `toEqual`
+// rejects against a locally-constructed one even when the bytes match. Compare
+// contents wherever an assertion crosses that boundary.
+const asArray = (b: Uint8Array) => Array.from(b)
+
+describe('hex', () => {
+  it('formats as uppercase space-separated pairs, matching the rest of the app', () => {
+    expect(formatHex(bytes(0x48, 0x65, 0x0f))).toBe('48 65 0F')
+  })
+
+  it('parses regardless of separators or case', () => {
+    expect(parseHex('48 65 6c')).toEqual(bytes(0x48, 0x65, 0x6c))
+    expect(parseHex('4865:6c')).toEqual(bytes(0x48, 0x65, 0x6c))
+  })
+
+  it('does not understand 0x prefixes — the 0 survives stripping and shifts every byte', () => {
+    // Documents a real trap: pasting "0x48,0x65" gives 04 80 65, not 48 65.
+    expect(parseHex('0x48,0x65')).toEqual(bytes(0x04, 0x80, 0x65))
+  })
+
+  it('ignores a trailing half-byte so typing stays stable', () => {
+    expect(parseHex('4')).toEqual(bytes())
+    expect(parseHex('48')).toEqual(bytes(0x48))
+    expect(parseHex('486')).toEqual(bytes(0x48))
+  })
+
+  it('round-trips', () => {
+    expect(formatHex(parseHex('DE AD BE EF'))).toBe('DE AD BE EF')
+  })
+})
+
+describe('binary', () => {
+  it('formats each byte as 8 bits', () => {
+    expect(formatBinary(bytes(0x48, 0x00))).toBe('01001000 00000000')
+  })
+
+  it('ignores a trailing partial byte', () => {
+    expect(parseBinary('0100')).toEqual(bytes())
+    expect(parseBinary('01001000')).toEqual(bytes(0x48))
+    expect(parseBinary('01001000 0110')).toEqual(bytes(0x48))
+  })
+
+  it('round-trips', () => {
+    expect(formatBinary(parseBinary('11111111 00000001'))).toBe('11111111 00000001')
+  })
+})
+
+describe('text', () => {
+  it('encodes and decodes ASCII', () => {
+    expect(asArray(encodeText('Hello'))).toEqual([0x48, 0x65, 0x6c, 0x6c, 0x6f])
+    expect(decodeText(bytes(0x48, 0x65, 0x6c, 0x6c, 0x6f))).toEqual({ text: 'Hello', editable: true })
+  })
+
+  it('uses UTF-8, matching the encoding the runtime uses', () => {
+    expect(asArray(encodeText('é'))).toEqual([0xc3, 0xa9])
+    expect(decodeText(bytes(0xc3, 0xa9)).text).toBe('é')
+  })
+
+  it('marks invalid UTF-8 as not editable, since re-encoding would change the bytes', () => {
+    const result = decodeText(bytes(0xff, 0xfe))
+    expect(result.editable).toBe(false)
+    // Proves the hazard: what it decodes to does not encode back to the original.
+    expect(asArray(encodeText(result.text))).not.toEqual([0xff, 0xfe])
+  })
+
+  it('marks control characters as not editable', () => {
+    expect(decodeText(bytes(0x48, 0x00, 0x49)).editable).toBe(false)
+    expect(decodeText(bytes(0x48, 0x0a)).editable).toBe(false)
+    expect(decodeText(bytes(0x7f)).editable).toBe(false)
+  })
+
+  it('shows control characters as a placeholder', () => {
+    expect(toPrintable('A\0B')).toBe('A·B')
+    expect(toPrintable('Hello')).toBe('Hello')
+  })
+
+  it('treats an empty buffer as editable', () => {
+    expect(decodeText(bytes())).toEqual({ text: '', editable: true })
+  })
+})
+
+describe('decimal', () => {
+  it('reads the whole buffer as one integer, both ways round', () => {
+    expect(bytesToDecimal(bytes(0x3c, 0x00), 'LE')).toBe('60')
+    expect(bytesToDecimal(bytes(0x3c, 0x00), 'BE')).toBe('15360')
+  })
+
+  it('reads an empty buffer as zero', () => {
+    expect(bytesToDecimal(bytes(), 'LE')).toBe('0')
+  })
+
+  it('reports overflow past u32 rather than a number nothing consumes', () => {
+    expect(bytesToDecimal(bytes(0xff, 0xff, 0xff, 0xff), 'BE')).toBe('4294967295')
+    expect(bytesToDecimal(bytes(0x01, 0x00, 0x00, 0x00, 0x00), 'BE')).toBeNull()
+    // Compared exactly: a double would have rounded this to the u32 limit and passed.
+    expect(bytesToDecimal(bytes(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff), 'BE')).toBeNull()
+  })
+
+  it('does not report overflow for leading zero bytes', () => {
+    expect(bytesToDecimal(bytes(0x00, 0x00, 0x00, 0x00, 0x0f), 'BE')).toBe('15')
+  })
+
+  it('round-trips through bytes', () => {
+    for (const endian of ['LE', 'BE'] as const) {
+      const source = bytes(0xde, 0xad, 0xbe, 0xef)
+      const dec = bytesToDecimal(source, endian)
+      const back = decimalToBytes(dec ?? '', endian, source.length)
+      expect('bytes' in back && Array.from(back.bytes)).toEqual(Array.from(source))
+    }
+  })
+
+  it('keeps the buffer width when the value still fits', () => {
+    const result = decimalToBytes('60', 'LE', 2)
+    expect('bytes' in result && Array.from(result.bytes)).toEqual([0x3c, 0x00])
+  })
+
+  it('grows the buffer when the value needs more room', () => {
+    const result = decimalToBytes('300', 'BE', 1)
+    expect('bytes' in result && Array.from(result.bytes)).toEqual([0x01, 0x2c])
+  })
+
+  it('treats empty input as a zeroed buffer of the current width', () => {
+    const result = decimalToBytes('', 'LE', 2)
+    expect('bytes' in result && Array.from(result.bytes)).toEqual([0, 0])
+  })
+
+  it('rejects non-digits rather than guessing', () => {
+    expect(decimalToBytes('3f', 'LE', 1)).toEqual({ error: 'Decimal digits only.' })
+  })
+
+  it('rejects input past u32, matching the display limit', () => {
+    expect(decimalToBytes('4294967296', 'LE', 1)).toEqual({ error: 'Value exceeds u32 (max 4294967295).' })
+  })
+})

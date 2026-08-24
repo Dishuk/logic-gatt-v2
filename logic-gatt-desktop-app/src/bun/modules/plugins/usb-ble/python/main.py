@@ -15,7 +15,9 @@ Usage:
 import asyncio
 import json
 import logging
+import os
 import signal
+import stat
 import sys
 from typing import Any
 from uuid import UUID
@@ -30,7 +32,11 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S"
 )
-log = logging.getLogger("ble-backend")
+log = logging.getLogger("ble-adapter")
+
+# The control channel is internal plumbing; its chatter is relayed to the app log,
+# so keep it out of the user-visible stream.
+logging.getLogger("websockets").setLevel(logging.WARNING)
 
 # WebSocket port (8766: 8765 is used by the desktop's mobile Wi-Fi transport)
 WS_PORT = 8766
@@ -93,9 +99,18 @@ class BleGattServer:
         self.char_values.clear()
         self.char_to_service.clear()
 
-        # Create new server (name_overwrite=True for custom device name)
-        log.info(f"[BLE] Creating BlessServer as '{self.device_name}'...")
-        self.server = BlessServer(name=self.device_name, loop=asyncio.get_event_loop(), name_overwrite=True)
+        # name_overwrite renames the host's Bluetooth adapter system-wide (registry +
+        # adapter restart on Windows), so it is opt-in from the app's Settings screen.
+        name_overwrite = bool(settings.get("nameOverwrite", False))
+        log.info(f"[BLE] Preparing adapter as '{self.device_name}'...")
+        if not name_overwrite:
+            log.info(
+                "[BLE] Adapter rename disabled — the advertised name is the system "
+                "Bluetooth name, not the project's Device Name"
+            )
+        self.server = BlessServer(
+            name=self.device_name, loop=asyncio.get_event_loop(), name_overwrite=name_overwrite
+        )
         self.server.read_request_func = self._read_request_handler
         self.server.write_request_func = self._write_request_handler
 
@@ -105,7 +120,11 @@ class BleGattServer:
             try:
                 await asyncio.wait_for(self.server.add_new_service(service_uuid), timeout=5.0)
             except asyncio.TimeoutError:
-                raise RuntimeError(f"Timeout adding service {service_uuid}")
+                raise RuntimeError(
+                    f"Timed out adding service {service_uuid}. This usually means no "
+                    "Bluetooth adapter is available, or it does not support BLE "
+                    "peripheral mode."
+                )
             log.info(f"[BLE] Added service: {service_uuid}")
 
             for char_def in svc_def.get("characteristics", []):
@@ -202,7 +221,7 @@ class BleGattServer:
         if char:
             char.value = bytearray(data)
         else:
-            log.warning(f"[BLE] Characteristic not found in bless: {char_uuid}")
+            log.warning(f"[BLE] Characteristic not found on the adapter: {char_uuid}")
 
         self.server.update_value(service_uuid, char_uuid)
         log.info(f"[BLE] Notification sent: {char_uuid} data={data.hex()}")
@@ -216,7 +235,7 @@ class BleGattServer:
             if char:
                 char.value = bytearray(data)
             else:
-                log.warning(f"[BLE] Characteristic not found in bless: {char_uuid}")
+                log.warning(f"[BLE] Characteristic not found on the adapter: {char_uuid}")
             # Note: Don't call update_value() here - that sends notifications,
             # which fails on read-only characteristics
         log.info(f"[BLE] Read response updated: {char_uuid} data={data.hex()}")
@@ -274,7 +293,7 @@ class WebSocketHandler:
 
         msg_type = msg.get("type", "")
         request_id = msg.get("requestId", "")
-        log.info(f"[WS] Received: {msg_type} (id={request_id})")
+        log.debug(f"[WS] Received: {msg_type} (id={request_id})")
 
         try:
             if msg_type == "ping":
@@ -299,7 +318,7 @@ class WebSocketHandler:
             elif msg_type == "notify":
                 char_uuid = msg.get("charUuid", "")
                 data = bytes(msg.get("data", []))
-                log.info(f"[WS] Notify request: charUuid='{char_uuid}' data_len={len(data)}")
+                log.debug(f"[WS] Notify request: charUuid='{char_uuid}' data_len={len(data)}")
                 await self.ble.notify(char_uuid, data)
                 await self.send(ws, {"type": "ack", "requestId": request_id})
 
@@ -329,7 +348,7 @@ class WebSocketHandler:
         """Handle WebSocket connection lifecycle."""
         self.clients.add(ws)
         remote = ws.remote_address
-        log.info(f"[WS] Client connected: {remote}")
+        log.debug(f"[WS] Client connected: {remote}")
 
         # Send ready message
         await self.send(ws, {"type": "connected"})
@@ -341,13 +360,21 @@ class WebSocketHandler:
             pass
         finally:
             self.clients.discard(ws)
-            log.info(f"[WS] Client disconnected: {remote}")
+            log.debug(f"[WS] Client disconnected: {remote}")
+
+
+def stdin_is_pipe() -> bool:
+    """True when stdin is a pipe, i.e. held open by a parent process."""
+    try:
+        return stat.S_ISFIFO(os.fstat(sys.stdin.fileno()).st_mode)
+    except (OSError, ValueError):
+        return False
 
 
 async def main():
     """Main entry point."""
-    log.info("USB BLE Backend starting...")
-    log.info("Using real Bluetooth adapter (no mock mode)")
+    log.info("Bluetooth adapter starting...")
+    log.info("Using the real Bluetooth adapter")
 
     # Create BLE server
     ble_server = BleGattServer()
@@ -359,8 +386,8 @@ async def main():
     stop_event = asyncio.Event()
 
     async with websockets.serve(ws_handler.handle_connection, "localhost", WS_PORT):
-        log.info(f"WebSocket server listening on ws://localhost:{WS_PORT}")
-        log.info("Waiting for frontend connection...")
+        log.debug(f"control channel listening on port {WS_PORT}")
+        log.debug("waiting for the app to connect...")
 
         # Wait for shutdown signal
         loop = asyncio.get_event_loop()
@@ -374,11 +401,28 @@ async def main():
             loop.add_signal_handler(signal.SIGINT, shutdown)
             loop.add_signal_handler(signal.SIGTERM, shutdown)
 
+        # Exit when the parent closes stdin. Killing the desktop app does not reliably
+        # reap this child, and an orphan holds the port against the next launch.
+        # Only when stdin is a pipe: a tty or /dev/null reads EOF straight away, which
+        # would shut the bridge down the moment it is run by hand.
+        async def watch_parent():
+            await asyncio.to_thread(sys.stdin.buffer.read, 1)
+            log.info("Parent closed stdin — shutting down")
+            stop_event.set()
+
+        watcher = None
+        if stdin_is_pipe():
+            watcher = asyncio.create_task(watch_parent())
+        else:
+            log.info("stdin is not a pipe — parent-exit watch disabled")
+
         await stop_event.wait()
+        if watcher is not None:
+            watcher.cancel()
 
     # Cleanup
     await ble_server.stop_advertising()
-    log.info("Goodbye!")
+    log.info("Bluetooth adapter stopped")
 
 
 if __name__ == "__main__":

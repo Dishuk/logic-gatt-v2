@@ -12,6 +12,7 @@ import { ElectrobunConnection } from '../lib/transport/electrobun-connection'
 import { validateSelectOptions, validateStatusResponse, type SelectOption, type StatusResponse } from '../lib/validate'
 import { rpc, onConnectionEvent } from '../lib/rpc'
 import { ConnectionPanel } from './ConnectionPanel'
+import { useModalDialog } from '../hooks/useModalDialog'
 
 interface BackendTransportModalProps {
   onConnect: (connection: TransportConnection, label: string) => void
@@ -180,7 +181,7 @@ function StatusField({
     setLoading('start')
     try {
       await callPluginAction(pluginId, startAction.method, startAction.path)
-      log('Backend started')
+      log(`${label} started`)
       fetchStatus()
     } catch (err) {
       log(`Failed to start: ${err instanceof Error ? err.message : String(err)}`)
@@ -194,7 +195,7 @@ function StatusField({
     setLoading('stop')
     try {
       await callPluginAction(pluginId, stopAction.method, stopAction.path)
-      log('Backend stopped')
+      log(`${label} stopped`)
       setStatus({ running: false })
     } catch (err) {
       log(`Failed to stop: ${err instanceof Error ? err.message : String(err)}`)
@@ -209,7 +210,7 @@ function StatusField({
       <div className="backend-status">
         <span className={`status-indicator ${status?.running ? 'running' : 'stopped'}`} />
         <span>{status?.running ? 'Running' : 'Stopped'}</span>
-        {status?.wsConnected && <span className="ws-connected">(WebSocket connected)</span>}
+        {status?.wsConnected && <span className="ws-connected">(connected)</span>}
       </div>
       <div className="backend-actions">
         {!status?.running && startAction && (
@@ -443,12 +444,12 @@ function MobileConnectUI({
     // already connected (e.g. reconnect), and keep listening for a fresh one.
     void selectPlugin(module.id)
       .then(() => rpc.request.getConnectionInfo())
-      .then((info) => {
+      .then(info => {
         if (info.peerId) void adopt(info.peerId)
       })
       .catch(() => {})
 
-    const off = onConnectionEvent((e) => {
+    const off = onConnectionEvent(e => {
       if (e.type === 'peer-connected') void adopt(e.peerId)
     })
 
@@ -467,8 +468,9 @@ function MobileConnectUI({
     <div className="plugin-connect-ui">
       <ConnectionPanel />
       <p className="backend-note">
-        Scan the QR with the LogicGATT phone app (or let it auto-discover on Wi-Fi). The
-        phone connects and this desktop adopts it automatically — nothing to press here.
+        Scan the QR with the LogicGATT phone app and this desktop adopts it automatically — nothing to press here. A
+        phone that finds this desktop over Wi-Fi (mDNS) instead has no scanned code to prove it is yours, so it waits
+        for approval above.
       </p>
     </div>
   )
@@ -479,6 +481,7 @@ function MobileConnectUI({
 // ============================================================================
 
 export function BackendTransportModal({ onConnect, onClose, log }: BackendTransportModalProps) {
+  const panelRef = useModalDialog<HTMLDivElement>(onClose)
   const [plugins, setPlugins] = useState<BackendPluginInfo[]>([])
   const [selectedPlugin, setSelectedPlugin] = useState<BackendPluginInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -495,9 +498,7 @@ export function BackendTransportModal({ onConnect, onClose, log }: BackendTransp
   }
 
   // Default connection way first (defensive — the host already orders it first).
-  const orderedPlugins = [...plugins].sort(
-    (a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)),
-  )
+  const orderedPlugins = [...plugins].sort((a, b) => Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault)))
 
   // Direction is per-module: `await-peer` (mobile) shows a QR and adopts the phone;
   // everything else uses the metadata-driven action form + an explicit Connect.
@@ -505,19 +506,22 @@ export function BackendTransportModal({ onConnect, onClose, log }: BackendTransp
     module.connectKind === 'await-peer' ? (
       <MobileConnectUI module={module} onConnect={handleConnect} log={log} />
     ) : (
-      <PluginConnectUI
-        plugin={module}
-        onConnect={handleConnect}
-        onCancel={() => setSelectedPlugin(null)}
-        log={log}
-      />
+      <PluginConnectUI plugin={module} onConnect={handleConnect} onCancel={() => setSelectedPlugin(null)} log={log} />
     )
 
   return (
     <div className="transport-overlay" onClick={onClose}>
-      <div className="transport-modal" onClick={e => e.stopPropagation()}>
+      <div
+        className="transport-modal"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transport-title"
+        tabIndex={-1}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2>
+          <h2 id="transport-title">
             {selectedPlugin ? (
               <>
                 <button className="back-button" onClick={() => setSelectedPlugin(null)}>
@@ -542,7 +546,7 @@ export function BackendTransportModal({ onConnect, onClose, log }: BackendTransp
             // module, metadata form for hardware modules).
             renderConnectUI(selectedPlugin)
           ) : plugins.length === 0 ? (
-            <div className="no-plugins">No modules available. Start the backend server.</div>
+            <div className="no-plugins">No connection methods are available.</div>
           ) : (
             // Always the first step: choose a connection way (matches the old app).
             // The list is shown even for a single module — selecting a module is what

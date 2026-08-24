@@ -1,0 +1,241 @@
+/**
+ * Cross-cutting control styling: quiet inputs, focus rings, checkboxes,
+ * the State tab, tab markers and the top-bar document identity.
+ */
+
+/* Quiet inputs: the dark inset fill already delineates each field against the
+   lighter card, so drop the resting border line. Border shows on hover, accent
+   ring on focus (set in the :focus rules above). Far fewer lines in dense forms. */
+input[type='text'],
+input[type='number'],
+input:not([type]),
+.uuid-input,
+.hex-input,
+.name-input,
+.device-name-input,
+.var-value-input,
+.fn-name-input,
+.var-name-input,
+.select {
+  border-color: transparent;
+}
+
+input[type='text']:hover:not(:focus),
+input[type='number']:hover:not(:focus),
+input:not([type]):hover:not(:focus),
+.uuid-input:hover:not(:focus),
+.hex-input:hover:not(:focus),
+.name-input:hover:not(:focus),
+.device-name-input:hover:not(:focus),
+.var-value-input:hover:not(:focus),
+.fn-name-input:hover:not(:focus),
+.var-name-input:hover:not(:focus),
+.select:hover:not(:focus) {
+  border-color: var(--border-primary);
+}
+
+/* Visible keyboard-focus ring for controls that don't already show one via a
+   focus border (buttons, checkboxes, links, disclosure summaries). */
+button:focus-visible,
+input[type='checkbox']:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* Theme native checkboxes to the accent instead of the OS default. */
+input[type='checkbox'] {
+  accent-color: var(--accent-blue);
+}
+
+/* The remove ✕ stays hidden at rest and appears when the row is hovered or holds
+   keyboard focus — keeps dense lists calm without losing the control. Drag handles
+   stay visible (they signal the row is reorderable); run buttons and toggles too. */
+.remove-btn {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.char-row:hover .remove-btn,
+.char-row:focus-within .remove-btn,
+.card:hover > .card-header .remove-btn,
+.card:focus-within > .card-header .remove-btn,
+.step-row:hover .remove-btn,
+.step-row:focus-within .remove-btn,
+.remove-btn:focus-visible {
+  opacity: 1;
+}
+
+/* State tab (live session values) */
+.state-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.state-panel .card {
+  margin-bottom: 0;
+}
+
+.state-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.state-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  padding: 0.05rem 0.35rem;
+  flex-shrink: 0;
+}
+
+.state-badge--live {
+  color: var(--status-green);
+  border-color: var(--status-green);
+}
+
+/* Live marker on the State tab itself, so a run is visible from the Schema tab. */
+.tab-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--status-green);
+}
+
+/* Unread log lines on a tab that isn't showing. Amber, not the green "live" dot —
+   this asks to be looked at rather than reporting that something is running. */
+.tab-dot--unread {
+  background: var(--status-amber);
+}
+
+/* Buttons never wrap their own text (global rule), so let the group wrap instead —
+   the left panel can be dragged down to 20% width. */
+.state-panel .card-header {
+  flex-wrap: wrap;
+}
+
+.state-header-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.state-var-list {
+  gap: 0.35rem;
+}
+
+/* A pressed-state button, so the filter sits with the actions instead of reading as a form field. */
+.toggle-btn {
+  background: transparent;
+  border-color: var(--border-primary);
+  color: var(--text-secondary);
+}
+
+.toggle-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.toggle-btn--on,
+.toggle-btn--on:hover:not(:disabled) {
+  background: var(--accent-blue-transparent);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.state-var-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.state-var-type {
+  color: var(--text-muted);
+}
+
+.state-var-initial {
+  color: var(--text-muted);
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-var-arrow {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.state-var-current {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Unchanged reads as muted as the project value it matches, so the eye lands only on
+   what a run actually moved — readout when idle, live input while running. */
+.state-var .state-var-current,
+.state-var .hex-input,
+.state-var .var-value-input {
+  color: var(--text-muted);
+}
+
+.state-var--dirty .state-var-current,
+.state-var--dirty .hex-input,
+.state-var--dirty .var-value-input {
+  color: var(--accent-blue-light);
+}
+
+.state-var-actions {
+  display: inline-flex;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.icon-btn:hover {
+  color: var(--accent-blue);
+  background: var(--bg-hover);
+}
+
+/* Document identity in the top bar. `margin-right: auto` keeps the name next to the
+   title and pushes the toolbar right, overriding the bar's space-between. */
+.project-name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: auto;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 22ch;
+}
+
+.project-dirty {
+  color: var(--status-amber);
+  font-size: 1.1rem;
+  line-height: 1;
+}

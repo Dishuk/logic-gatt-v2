@@ -110,10 +110,7 @@ export function ServiceCard({ service, onChange, onRemove, dupUuids }: ServiceCa
         {!collapsed && (
           <CardBody>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCharDragEnd}>
-              <SortableContext
-                items={service.characteristics.map(c => c.id)}
-                strategy={verticalListSortingStrategy}
-              >
+              <SortableContext items={service.characteristics.map(c => c.id)} strategy={verticalListSortingStrategy}>
                 {service.characteristics.map(char => (
                   <CharacteristicRow
                     key={char.id}

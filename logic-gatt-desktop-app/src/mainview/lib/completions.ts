@@ -5,7 +5,13 @@ import { snippetCompletion } from '@codemirror/autocomplete'
 const ctxMembers: Completion[] = [
   { label: 'getVar', type: 'function', detail: '(name: string)', info: 'Get variable value', boost: 2 },
   { label: 'setVar', type: 'function', detail: '(name: string, value)', info: 'Set variable value', boost: 2 },
-  { label: 'runScenario', type: 'function', detail: '(name: string)', info: 'Queue a scenario to run after this function', boost: 1 },
+  {
+    label: 'runScenario',
+    type: 'function',
+    detail: '(name: string)',
+    info: 'Queue a scenario to run after this function',
+    boost: 1,
+  },
   { label: 'log', type: 'function', detail: '(msg: string)', info: 'Log to terminal', boost: 1 },
 ]
 

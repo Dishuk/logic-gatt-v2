@@ -35,6 +35,12 @@ Or from the repo root: `make android` / `make ios`.
 2. On the phone, scan the QR code or pick the desktop from the mDNS list.
 3. Desktop and phone must be on the same Wi-Fi network.
 
+The QR code carries a one-run session token, so scanning it connects immediately. Anything
+that arrives without that token — an mDNS pick, or a QR saved from an earlier desktop run —
+shows as `awaiting` here and waits for approval in the desktop's connect panel. Nothing is
+relayed in the meantime. This keeps the listener, which is open to the whole LAN, from being
+taken by another device on the network.
+
 ## Structure
 
 ```

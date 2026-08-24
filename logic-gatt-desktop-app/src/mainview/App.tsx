@@ -1,14 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useLogger } from './hooks/useLogger'
 import { useProject } from './hooks/useProject'
+import { useProjectFile } from './hooks/useProjectFile'
+import { useSettings } from './hooks/useSettings'
 import { useTransport } from './hooks/useTransport'
 import type { ExampleProject } from './components/TopBar'
 import { TopBar } from './components/TopBar'
-import { ServicesPanel } from './components/ServicesPanel'
+import { DevicePanel } from './components/DevicePanel'
 import { CodeEditorPanel } from './components/CodeEditorPanel'
 import { Terminal } from './components/Terminal'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { importProject } from './lib/schemaIO'
+import { SaveAsModal } from './components/SaveAsModal'
+import { UnsavedChangesModal } from './components/UnsavedChangesModal'
+import { createSessionState } from './lib/sessionState'
 import { rpc, onConnectionEvent } from './lib/rpc'
 
 // Preset metadata - maps API preset names to display info
@@ -28,11 +32,35 @@ export function App() {
   const deviceLogger = useLogger()
   const fnLogger = useLogger()
 
-  // Project state
-  const project = useProject(deviceLogger.log)
+  const { settings } = useSettings()
+
+  // Live variable values. The project holds the authored ones and is never written to
+  // by a run; this store is what scenarios read and write (see lib/sessionState).
+  const session = useMemo(() => createSessionState(), [])
+
+  // Project state. Loading another project starts session state over — same-named
+  // variables from the old one must not carry their values across.
+  const project = useProject(deviceLogger.log, data => session.reseed(data.variables))
+  const files = useProjectFile(project, deviceLogger.log)
 
   // Transport connection
-  const transport = useTransport({ log: deviceLogger.log, fnLog: fnLogger.log })
+  const resetPolicy = useMemo(
+    () => ({ onRun: settings.resetVariablesOnRun, onDisconnect: settings.resetVariablesOnDisconnect }),
+    [settings.resetVariablesOnRun, settings.resetVariablesOnDisconnect]
+  )
+  const transport = useTransport({
+    log: deviceLogger.log,
+    fnLog: fnLogger.log,
+    session,
+    getVariables: () => project.variablesRef.current,
+    resetPolicy,
+  })
+
+  // Definition edits (added, removed, renamed, retyped, reordered) reach the session
+  // without disturbing values a run has already produced.
+  useEffect(() => {
+    session.sync(project.variables)
+  }, [session, project.variables])
 
   // The webview is created at the OUTER window size on Windows and only snaps to the client
   // area on a real resize, so ask Bun to nudge the window now that we've mounted.
@@ -48,9 +76,9 @@ export function App() {
     async function loadPresetList() {
       try {
         const presets = await rpc.request.getPresets()
-        const exampleList: ExampleProject[] = presets.map((name: string) => {
-          const info = PRESET_INFO[name] ?? { name, description: '' }
-          return { name: info.name, description: info.description, data: name }
+        const exampleList: ExampleProject[] = presets.map((preset: string) => {
+          const info = PRESET_INFO[preset] ?? { name: preset, description: '' }
+          return { name: info.name, description: info.description, preset }
         })
         setExamples(exampleList)
       } catch {
@@ -59,21 +87,6 @@ export function App() {
     }
     loadPresetList()
   }, [])
-
-  // Mirror the transport asymmetry: the phone initiates, but either side can drop.
-  // If the active executor (phone) hangs up, fully end the desktop session (drop the
-  // link, not just Stop) so the UI returns to "Connect Device" rather than pointing
-  // at a dead peer.
-  const { port, handleDisconnect } = transport
-  useEffect(() => {
-    const off = onConnectionEvent((e) => {
-      if (e.type === 'peer-disconnected' && port) {
-        deviceLogger.log('Phone disconnected — ending session')
-        handleDisconnect()
-      }
-    })
-    return off
-  }, [port, handleDisconnect, deviceLogger.log])
 
   // Resizable split between the Services (left) and Code Editor (right) panels.
   const [leftWidthPct, setLeftWidthPct] = useState(50)
@@ -99,32 +112,58 @@ export function App() {
     document.addEventListener('mouseup', onUp)
   }, [])
 
-  const handleUpload = () => {
-    transport.handleUpload(project.services, project.deviceSettings, {
-      getScenarios: () => project.scenariosRef.current,
-      getFunctions: () => project.functionsRef.current,
-      getVariables: () => project.variablesRef.current,
-      setVariables: project.setVariables,
-    })
+  const handleUpload = (options?: { reseed?: boolean }) => {
+    transport.handleUpload(
+      project.services,
+      project.deviceSettings,
+      {
+        getScenarios: () => project.scenariosRef.current,
+        getFunctions: () => project.functionsRef.current,
+      },
+      options
+    )
   }
 
-  const handleLoadExample = async (example: ExampleProject) => {
-    try {
-      // example.data is now the preset name (string)
-      const presetName = example.data as string
-      const json = await rpc.request.getPreset({ name: presetName })
-      const data = importProject(JSON.stringify(json))
-      project.setDeviceSettings(data.deviceSettings)
-      project.setServices(data.services)
-      project.setFunctions(data.functions)
-      project.setVariables(data.variables)
-      project.setTests(data.tests)
-      project.setScenarios(data.scenarios)
-      deviceLogger.log(`Loaded example: ${example.name}`)
-    } catch (err) {
-      deviceLogger.log(`Failed to load example: ${err instanceof Error ? err.message : String(err)}`)
+  // The phone can drop out (sleep, Wi-Fi blip) and dial back in. Keep the Wi-Fi server
+  // listening across the gap — stop the device, then resume it when the phone returns —
+  // instead of dropping the link, which would leave nothing to reconnect to.
+  const { connection, running, handleStop } = transport
+  const resumeOnReconnect = useRef(false)
+  const uploadRef = useRef(handleUpload)
+  useEffect(() => {
+    uploadRef.current = handleUpload
+  })
+  useEffect(() => {
+    const off = onConnectionEvent(e => {
+      if (!connection) return
+      if (e.type === 'peer-disconnected') {
+        resumeOnReconnect.current = running
+        deviceLogger.log('Phone disconnected — link kept open, waiting for it to reconnect')
+        void handleStop()
+      } else if (e.type === 'peer-connected' && resumeOnReconnect.current) {
+        resumeOnReconnect.current = false
+        deviceLogger.log('Phone reconnected — restarting the device')
+        // Resuming the same session: a dropped Wi-Fi link must not reset variables.
+        uploadRef.current({ reseed: false })
+      }
+    })
+    return off
+    // `deviceLogger.log` is stable (useCallback with no deps) but `deviceLogger` is a
+    // fresh object each render, so depending on it would resubscribe every time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection, running, handleStop, deviceLogger.log])
+
+  // Ctrl/Cmd+S saves; an untitled project falls through to Save As.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        void files.save()
+      }
     }
-  }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [files])
 
   return (
     <ErrorBoundary>
@@ -132,21 +171,38 @@ export function App() {
         <TopBar
           transport={transport}
           project={project}
+          files={files}
           logger={deviceLogger}
-          onUpload={handleUpload}
+          onUpload={() => handleUpload()}
           examples={examples}
-          onLoadExample={handleLoadExample}
         />
         <div
           className="panels"
           ref={panelsRef}
           style={{ '--panel-left-basis': `${leftWidthPct}%` } as React.CSSProperties}
         >
-          <ServicesPanel project={project} />
+          <DevicePanel project={project} session={session} running={running} />
           <div className="panel-resize-handle" onMouseDown={startPanelResize} />
           <CodeEditorPanel project={project} fnLogger={fnLogger} transport={transport} />
         </div>
         <Terminal deviceLogger={deviceLogger} fnLogger={fnLogger} />
+
+        {files.pending && (
+          <UnsavedChangesModal
+            action={files.pendingLabel}
+            projectName={project.projectName}
+            onSave={files.confirmSave}
+            onDiscard={files.confirmDiscard}
+            onCancel={files.confirmCancel}
+          />
+        )}
+        {files.saveAsOpen && (
+          <SaveAsModal
+            defaultName={project.currentPath ? project.projectName : 'project.json'}
+            onSave={files.completeSaveAs}
+            onCancel={files.cancelSaveAs}
+          />
+        )}
       </div>
     </ErrorBoundary>
   )

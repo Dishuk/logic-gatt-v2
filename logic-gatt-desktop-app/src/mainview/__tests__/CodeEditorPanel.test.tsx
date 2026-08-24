@@ -25,18 +25,20 @@ vi.mock('../themes', () => ({
 // Import after mocks are set up
 import { CodeEditorPanel } from '../components/CodeEditorPanel'
 
-function createDefaultProps(overrides: {
-  services?: Schema
-  functions?: UserFunction[]
-  variables?: UserVariable[]
-  tests?: UserTest[]
-  scenarios?: Scenario[]
-  setFunctions?: ReturnType<typeof vi.fn>
-  setVariables?: ReturnType<typeof vi.fn>
-  setTests?: ReturnType<typeof vi.fn>
-  setScenarios?: ReturnType<typeof vi.fn>
-  fnLog?: ReturnType<typeof vi.fn>
-} = {}) {
+function createDefaultProps(
+  overrides: {
+    services?: Schema
+    functions?: UserFunction[]
+    variables?: UserVariable[]
+    tests?: UserTest[]
+    scenarios?: Scenario[]
+    setFunctions?: ReturnType<typeof vi.fn>
+    setVariables?: ReturnType<typeof vi.fn>
+    setTests?: ReturnType<typeof vi.fn>
+    setScenarios?: ReturnType<typeof vi.fn>
+    fnLog?: ReturnType<typeof vi.fn>
+  } = {}
+) {
   return {
     project: {
       services: overrides.services ?? ([] as Schema),

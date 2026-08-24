@@ -4,9 +4,9 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { exportProject, importProject, DEFAULT_DEVICE_SETTINGS, type ProjectData } from '../lib/schemaIO'
+import { serializeProject, parseProject, DEFAULT_DEVICE_SETTINGS, type ProjectData } from '../lib/schemaIO'
 import { validateSchema } from '../lib/validation'
-import { buildContext, executeFunctionSync } from '../lib/executor'
+import { runSandboxed } from '../lib/sandbox'
 import defaultProjectJson from './fixtures/defaultProject.json'
 import heartRateMonitorJson from './fixtures/heartRateMonitor.json'
 import { TriggerKind, StepKind } from '../types'
@@ -57,10 +57,10 @@ function createProject(overrides?: Partial<ProjectData>): ProjectData {
   }
 }
 
-describe('exportProject', () => {
+describe('serializeProject', () => {
   it('should export empty project', () => {
     const project = createProject()
-    const json = exportProject(project)
+    const json = serializeProject(project)
     const parsed = JSON.parse(json)
 
     expect(parsed.deviceSettings).toEqual(DEFAULT_DEVICE_SETTINGS)
@@ -74,7 +74,7 @@ describe('exportProject', () => {
   it('should strip IDs from services', () => {
     const service = createService()
     const project = createProject({ services: [service] })
-    const json = exportProject(project)
+    const json = serializeProject(project)
     const parsed = JSON.parse(json)
 
     expect(parsed.services[0].id).toBeUndefined()
@@ -84,7 +84,7 @@ describe('exportProject', () => {
   it('should strip IDs from functions', () => {
     const fn = createFunction()
     const project = createProject({ functions: [fn] })
-    const json = exportProject(project)
+    const json = serializeProject(project)
     const parsed = JSON.parse(json)
 
     expect(parsed.functions[0].id).toBeUndefined()
@@ -95,7 +95,7 @@ describe('exportProject', () => {
   it('should strip IDs from variables', () => {
     const variable = createVariable()
     const project = createProject({ variables: [variable] })
-    const json = exportProject(project)
+    const json = serializeProject(project)
     const parsed = JSON.parse(json)
 
     expect(parsed.variables[0].id).toBeUndefined()
@@ -113,7 +113,7 @@ describe('exportProject', () => {
       expectedHex: 'CC DD',
     }
     const project = createProject({ functions: [fn], tests: [test] })
-    const json = exportProject(project)
+    const json = serializeProject(project)
     const parsed = JSON.parse(json)
 
     expect(parsed.tests[0].id).toBeUndefined()
@@ -130,7 +130,7 @@ describe('exportProject', () => {
       steps: [{ kind: StepKind.Respond }],
     }
     const project = createProject({ scenarios: [scenario] })
-    const json = exportProject(project)
+    const json = serializeProject(project)
     const parsed = JSON.parse(json)
 
     expect(parsed.scenarios[0].id).toBeUndefined()
@@ -146,7 +146,7 @@ describe('exportProject', () => {
         manufacturerData: 'AA BB CC',
       },
     })
-    const json = exportProject(project)
+    const json = serializeProject(project)
     const parsed = JSON.parse(json)
 
     expect(parsed.deviceSettings.deviceName).toBe('My Device')
@@ -159,19 +159,19 @@ describe('exportProject', () => {
       services: [createService()],
       functions: [createFunction()],
     })
-    const json = exportProject(project)
+    const json = serializeProject(project)
     expect(() => JSON.parse(json)).not.toThrow()
   })
 
   it('should be pretty-printed', () => {
     const project = createProject()
-    const json = exportProject(project)
+    const json = serializeProject(project)
     expect(json).toContain('\n')
     expect(json).toContain('  ')
   })
 })
 
-describe('importProject', () => {
+describe('parseProject', () => {
   describe('new format', () => {
     it('should import empty project', () => {
       const json = JSON.stringify({
@@ -182,7 +182,7 @@ describe('importProject', () => {
         tests: [],
         scenarios: [],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.deviceSettings).toEqual(DEFAULT_DEVICE_SETTINGS)
       expect(project.services).toEqual([])
@@ -193,7 +193,7 @@ describe('importProject', () => {
       const json = JSON.stringify({
         services: [{ uuid: 'aabbccdd-0000-0000-0000-000000000000', tag: 'Test', characteristics: [] }],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.services[0].id).toBeDefined()
       expect(project.services[0].uuid).toBe('aabbccdd-0000-0000-0000-000000000000')
@@ -203,7 +203,7 @@ describe('importProject', () => {
       const json = JSON.stringify({
         functions: [{ name: 'fn1', body: 'return input;' }],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.functions[0].id).toBeDefined()
       expect(project.functions[0].name).toBe('fn1')
@@ -214,7 +214,7 @@ describe('importProject', () => {
         functions: [{ name: 'myFn', body: '' }],
         tests: [{ name: 'test1', functionName: 'myFn', inputHex: '', expectedHex: '' }],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.tests[0].functionId).toBe(project.functions[0].id)
     })
@@ -224,7 +224,7 @@ describe('importProject', () => {
         functions: [],
         tests: [{ name: 'test1', functionName: 'nonexistent', inputHex: '', expectedHex: '' }],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.tests[0].functionId).toBe('')
     })
@@ -239,7 +239,7 @@ describe('importProject', () => {
           { name: 'v5', type: 'string', initialValue: 'hello' },
         ],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.variables.length).toBe(5)
       expect(project.variables[0].type).toBe('hex')
@@ -253,7 +253,7 @@ describe('importProject', () => {
       const json = JSON.stringify({
         variables: [{ name: 'v1', type: 'invalid', initialValue: '' }],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.variables[0].type).toBe('hex')
     })
@@ -269,7 +269,7 @@ describe('importProject', () => {
           },
         ],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.scenarios[0].trigger.kind).toBe('char-write')
       if (project.scenarios[0].trigger.kind === 'char-write') {
@@ -287,7 +287,7 @@ describe('importProject', () => {
           },
         ],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.scenarios[0].trigger.kind).toBe('timer')
       if (project.scenarios[0].trigger.kind === 'timer') {
@@ -310,7 +310,7 @@ describe('importProject', () => {
           },
         ],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.scenarios[0].steps.length).toBe(3)
       expect(project.scenarios[0].steps[0].kind).toBe('call-function')
@@ -320,7 +320,7 @@ describe('importProject', () => {
 
     it('should use default device settings when missing', () => {
       const json = JSON.stringify({ services: [] })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.deviceSettings).toEqual(DEFAULT_DEVICE_SETTINGS)
     })
@@ -329,7 +329,7 @@ describe('importProject', () => {
       const json = JSON.stringify({
         deviceSettings: { deviceName: 'Custom Name' },
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.deviceSettings.deviceName).toBe('Custom Name')
       expect(project.deviceSettings.appearance).toBe(DEFAULT_DEVICE_SETTINGS.appearance)
@@ -342,7 +342,7 @@ describe('importProject', () => {
         { uuid: 'svc1', tag: 'Service 1', characteristics: [] },
         { uuid: 'svc2', tag: 'Service 2', characteristics: [] },
       ])
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.services.length).toBe(2)
       expect(project.functions).toEqual([])
@@ -352,24 +352,24 @@ describe('importProject', () => {
 
     it('should throw for empty legacy array', () => {
       const json = JSON.stringify([])
-      expect(() => importProject(json)).toThrow('No valid services found')
+      expect(() => parseProject(json)).toThrow('No valid services found')
     })
   })
 
   describe('error handling', () => {
     it('should throw for invalid JSON', () => {
-      expect(() => importProject('not json')).toThrow()
+      expect(() => parseProject('not json')).toThrow()
     })
 
     it('should throw for non-object/non-array', () => {
-      expect(() => importProject('"just a string"')).toThrow('Invalid project format')
+      expect(() => parseProject('"just a string"')).toThrow('Invalid project format')
     })
 
     it('should skip invalid services', () => {
       const json = JSON.stringify({
         services: [{ uuid: 'valid', tag: 'Valid', characteristics: [] }, null, 'invalid', { uuid: 123 }],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.services.length).toBe(2) // valid + {uuid: 123} converts to {uuid: ''}
     })
@@ -378,7 +378,7 @@ describe('importProject', () => {
       const json = JSON.stringify({
         functions: [{ name: 'valid', body: '' }, { body: 'no name' }, { name: '', body: '' }],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.functions.length).toBe(1)
     })
@@ -390,7 +390,7 @@ describe('importProject', () => {
           { type: 'u8', initialValue: '0' },
         ],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.variables.length).toBe(1)
     })
@@ -402,7 +402,7 @@ describe('importProject', () => {
           { name: 'invalid', steps: [] },
         ],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.scenarios.length).toBe(1)
     })
@@ -417,7 +417,7 @@ describe('importProject', () => {
           },
         ],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       expect(project.scenarios[0].steps.length).toBe(1)
     })
@@ -441,7 +441,7 @@ describe('importProject', () => {
           },
         ],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       const char = project.services[0].characteristics[0]
       expect(char.properties.read).toBe(true)
@@ -459,7 +459,7 @@ describe('importProject', () => {
           },
         ],
       })
-      const project = importProject(json)
+      const project = parseProject(json)
 
       const char = project.services[0].characteristics[0]
       expect(char.properties.read).toBe(false)
@@ -490,8 +490,8 @@ describe('roundtrip: export -> import', () => {
       ],
     })
 
-    const exported = exportProject(original)
-    const imported = importProject(exported)
+    const exported = serializeProject(original)
+    const imported = parseProject(exported)
 
     expect(imported.services.length).toBe(1)
     expect(imported.services[0].uuid).toBe(original.services[0].uuid)
@@ -509,8 +509,8 @@ describe('roundtrip: export -> import', () => {
       ],
     })
 
-    const exported = exportProject(original)
-    const imported = importProject(exported)
+    const exported = serializeProject(original)
+    const imported = parseProject(exported)
 
     expect(imported.functions.length).toBe(2)
     expect(imported.functions[0].name).toBe('echo')
@@ -525,8 +525,8 @@ describe('roundtrip: export -> import', () => {
       ],
     })
 
-    const exported = exportProject(original)
-    const imported = importProject(exported)
+    const exported = serializeProject(original)
+    const imported = parseProject(exported)
 
     expect(imported.variables.length).toBe(2)
     expect(imported.variables[0].name).toBe('buf')
@@ -545,8 +545,8 @@ describe('roundtrip: export -> import', () => {
     }
     const original = createProject({ functions: [fn], tests: [test] })
 
-    const exported = exportProject(original)
-    const imported = importProject(exported)
+    const exported = serializeProject(original)
+    const imported = parseProject(exported)
 
     expect(imported.tests[0].functionId).toBe(imported.functions[0].id)
   })
@@ -560,8 +560,8 @@ describe('roundtrip: export -> import', () => {
       },
     })
 
-    const exported = exportProject(original)
-    const imported = importProject(exported)
+    const exported = serializeProject(original)
+    const imported = parseProject(exported)
 
     expect(imported.deviceSettings).toEqual(original.deviceSettings)
   })
@@ -582,8 +582,8 @@ describe('roundtrip: export -> import', () => {
       ],
     })
 
-    const exported = exportProject(original)
-    const imported = importProject(exported)
+    const exported = serializeProject(original)
+    const imported = parseProject(exported)
 
     expect(imported.scenarios[0].name).toBe('On Write')
     expect(imported.scenarios[0].steps.length).toBe(2)
@@ -593,13 +593,13 @@ describe('roundtrip: export -> import', () => {
 describe('example schemas', () => {
   describe('defaultProject.json', () => {
     it('should import without errors', () => {
-      const project = importProject(JSON.stringify(defaultProjectJson))
+      const project = parseProject(JSON.stringify(defaultProjectJson))
       expect(project.services.length).toBeGreaterThan(0)
       expect(project.functions.length).toBeGreaterThan(0)
     })
 
     it('should pass validation', () => {
-      const project = importProject(JSON.stringify(defaultProjectJson))
+      const project = parseProject(JSON.stringify(defaultProjectJson))
       const result = validateSchema(
         project.services,
         project.deviceSettings,
@@ -612,7 +612,7 @@ describe('example schemas', () => {
     })
 
     it('should have valid scenario references', () => {
-      const project = importProject(JSON.stringify(defaultProjectJson))
+      const project = parseProject(JSON.stringify(defaultProjectJson))
       const functionNames = new Set(project.functions.map(f => f.name))
 
       for (const scenario of project.scenarios) {
@@ -625,18 +625,13 @@ describe('example schemas', () => {
     })
 
     it('should pass all function tests', () => {
-      const project = importProject(JSON.stringify(defaultProjectJson))
+      const project = parseProject(JSON.stringify(defaultProjectJson))
 
       for (const test of project.tests) {
         const fn = project.functions.find(f => f.id === test.functionId)
         expect(fn).toBeDefined()
         if (!fn) continue
 
-        const ctx = buildContext(
-          project.variables,
-          () => {},
-          () => {}
-        )
         const inputBytes = test.inputHex
           ? new Uint8Array(
               test.inputHex
@@ -646,7 +641,13 @@ describe('example schemas', () => {
             )
           : new Uint8Array()
 
-        const result = executeFunctionSync(fn, inputBytes, ctx)
+        const res = runSandboxed({
+          body: fn.body,
+          input: Array.from(inputBytes),
+          variables: project.variables.map(v => ({ name: v.name, type: v.type, value: v.initialValue })),
+          scenarioNames: [],
+        })
+        const result = res.result ? new Uint8Array(res.result) : null
 
         const expectedBytes = test.expectedHex
           ? new Uint8Array(
@@ -666,14 +667,14 @@ describe('example schemas', () => {
 
   describe('heartRateMonitor.json', () => {
     it('should import without errors', () => {
-      const project = importProject(JSON.stringify(heartRateMonitorJson))
+      const project = parseProject(JSON.stringify(heartRateMonitorJson))
       expect(project.services.length).toBe(2) // HR Service + Battery Service
       expect(project.functions.length).toBeGreaterThan(0)
       expect(project.variables.length).toBeGreaterThan(0)
     })
 
     it('should pass validation', () => {
-      const project = importProject(JSON.stringify(heartRateMonitorJson))
+      const project = parseProject(JSON.stringify(heartRateMonitorJson))
       const result = validateSchema(
         project.services,
         project.deviceSettings,
@@ -686,7 +687,7 @@ describe('example schemas', () => {
     })
 
     it('should have correct BLE UUIDs', () => {
-      const project = importProject(JSON.stringify(heartRateMonitorJson))
+      const project = parseProject(JSON.stringify(heartRateMonitorJson))
 
       // Heart Rate Service UUID
       const hrService = project.services.find(s => s.uuid === '0000180d-0000-1000-8000-00805f9b34fb')
@@ -700,7 +701,7 @@ describe('example schemas', () => {
     })
 
     it('should have valid scenario references', () => {
-      const project = importProject(JSON.stringify(heartRateMonitorJson))
+      const project = parseProject(JSON.stringify(heartRateMonitorJson))
       const functionNames = new Set(project.functions.map(f => f.name))
 
       for (const scenario of project.scenarios) {
@@ -713,18 +714,13 @@ describe('example schemas', () => {
     })
 
     it('should pass all function tests', () => {
-      const project = importProject(JSON.stringify(heartRateMonitorJson))
+      const project = parseProject(JSON.stringify(heartRateMonitorJson))
 
       for (const test of project.tests) {
         const fn = project.functions.find(f => f.id === test.functionId)
         expect(fn).toBeDefined()
         if (!fn) continue
 
-        const ctx = buildContext(
-          project.variables,
-          () => {},
-          () => {}
-        )
         const inputBytes = test.inputHex
           ? new Uint8Array(
               test.inputHex
@@ -734,7 +730,13 @@ describe('example schemas', () => {
             )
           : new Uint8Array()
 
-        const result = executeFunctionSync(fn, inputBytes, ctx)
+        const res = runSandboxed({
+          body: fn.body,
+          input: Array.from(inputBytes),
+          variables: project.variables.map(v => ({ name: v.name, type: v.type, value: v.initialValue })),
+          scenarioNames: [],
+        })
+        const result = res.result ? new Uint8Array(res.result) : null
 
         const expectedBytes = test.expectedHex
           ? new Uint8Array(

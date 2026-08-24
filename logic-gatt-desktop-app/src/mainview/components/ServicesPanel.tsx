@@ -5,12 +5,7 @@ import { DeviceSettingsCard } from './DeviceSettingsCard'
 import { MAX_SERVICES } from '../lib/constants'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 
 function findDuplicateUuids(services: Service[]): Set<string> {
   const seen = new Map<string, number>()
@@ -40,8 +35,7 @@ interface ServicesPanelProps {
 }
 
 export function ServicesPanel({ project }: ServicesPanelProps) {
-  const { deviceSettings, setDeviceSettings, services, setServices, addService, updateService, removeService } =
-    project
+  const { deviceSettings, setDeviceSettings, services, setServices, addService, updateService, removeService } = project
   const dupUuids = useMemo(() => findDuplicateUuids(services), [services])
 
   const sensors = useSensors(
@@ -60,33 +54,26 @@ export function ServicesPanel({ project }: ServicesPanelProps) {
   }
 
   return (
-    <div className="panel-left">
-      <div className="panel-header">
-        <span>
-          Services ({services.length}/{MAX_SERVICES})
-        </span>
-      </div>
-      <div className="panel-content panel-content--scroll">
-        <DeviceSettingsCard settings={deviceSettings} onChange={setDeviceSettings} />
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={services.map(s => s.id)} strategy={verticalListSortingStrategy}>
-            {services.map(service => (
-              <ServiceCard
-                key={service.id}
-                service={service}
-                onChange={updated => updateService(service.id, updated)}
-                onRemove={() => removeService(service.id)}
-                dupUuids={dupUuids}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
-        {services.length < MAX_SERVICES && (
-          <button className="add-btn" onClick={addService}>
-            + Add Service
-          </button>
-        )}
-      </div>
-    </div>
+    <>
+      <DeviceSettingsCard settings={deviceSettings} onChange={setDeviceSettings} />
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={services.map(s => s.id)} strategy={verticalListSortingStrategy}>
+          {services.map(service => (
+            <ServiceCard
+              key={service.id}
+              service={service}
+              onChange={updated => updateService(service.id, updated)}
+              onRemove={() => removeService(service.id)}
+              dupUuids={dupUuids}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+      {services.length < MAX_SERVICES && (
+        <button className="add-btn" onClick={addService}>
+          + Add Service
+        </button>
+      )}
+    </>
   )
 }

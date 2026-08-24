@@ -1,538 +1,706 @@
 /**
- * Integration tests for runtime scenario execution.
- * Tests the pipeline logic, trigger matching, and step execution.
+ * Tests for the scenario engine (`lib/runtime.ts`).
+ *
+ * These drive the real `startRuntime` through a fake `TransportConnection`: events are
+ * pushed in the way the phone pushes them, and the assertions are on what the runtime
+ * sends back (notify / respondToRead) and what it logs. Only the sandbox worker is
+ * mocked — user function bodies are stubbed per test so the pipeline itself is real.
  */
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { TriggerKind, StepKind, type Schema, type Scenario, type UserFunction } from '../types'
+import type { TransportConnection, TransportEvent, TransportEventHandler } from '../lib/transport/types'
+import { createSessionState } from '../lib/sessionState'
+import { MAX_SCENARIO_DEPTH } from '../lib/constants'
 
-// Test helpers that mirror runtime.ts logic
-function indicesToUuids(
-  schema: Schema,
-  svcIdx: number,
-  chrIdx: number
-): { serviceUuid: string; charUuid: string } | null {
-  if (svcIdx >= schema.length) return null
-  const svc = schema[svcIdx]
-  if (chrIdx >= svc.characteristics.length) return null
-  return { serviceUuid: svc.uuid, charUuid: svc.characteristics[chrIdx].uuid }
-}
+// --- sandbox stub -----------------------------------------------------------
+//
+// Each test registers function bodies by name. A stub returns the output buffer and
+// any scenarios the body asked for via `ctx.runScenario()`.
 
-function uuidsToIndices(
-  schema: Schema,
-  serviceUuid: string,
-  charUuid: string
-): { svcIdx: number; chrIdx: number } | null {
-  for (let s = 0; s < schema.length; s++) {
-    if (schema[s].uuid !== serviceUuid) continue
-    for (let c = 0; c < schema[s].characteristics.length; c++) {
-      if (schema[s].characteristics[c].uuid === charUuid) return { svcIdx: s, chrIdx: c }
-    }
-  }
-  return null
-}
+type FnStub = (input: Uint8Array) => { output: Uint8Array | null; scenarioRequests?: string[] }
 
-// Test schema
-const testSchema: Schema = [
+const stubs = new Map<string, FnStub>()
+/** Every function the runtime executed, in order. */
+let executed: { name: string; input: number[] }[] = []
+
+vi.mock('../lib/executor', () => ({
+  executeFunction: vi.fn(async (fn: UserFunction, input: Uint8Array) => {
+    executed.push({ name: fn.name, input: [...input] })
+    const stub = stubs.get(fn.name)
+    if (!stub) return { output: input, scenarioRequests: [] }
+    const result = stub(input)
+    return { output: result.output, scenarioRequests: result.scenarioRequests ?? [] }
+  }),
+}))
+
+const { startRuntime } = await import('../lib/runtime')
+
+// --- fixtures ---------------------------------------------------------------
+
+const SVC = '0000180d-0000-1000-8000-00805f9b34fb'
+const CHAR_A = '00002a37-0000-1000-8000-00805f9b34fb'
+const CHAR_B = '00002a38-0000-1000-8000-00805f9b34fb'
+
+const schema: Schema = [
   {
     id: 'svc-1',
-    uuid: 'service-uuid-1',
-    tag: 'Test Service',
+    uuid: SVC,
+    tag: 'Heart Rate',
     characteristics: [
       {
-        id: 'char-1',
-        uuid: 'char-uuid-1',
-        tag: 'Char 1',
+        id: 'char-a',
+        uuid: CHAR_A,
+        tag: 'Measurement',
         properties: { read: true, write: true, notify: true },
         defaultValue: '',
       },
       {
-        id: 'char-2',
-        uuid: 'char-uuid-2',
-        tag: 'Char 2',
+        id: 'char-b',
+        uuid: CHAR_B,
+        tag: 'Body Sensor',
         properties: { read: true, write: false, notify: false },
-        defaultValue: '',
-      },
-    ],
-  },
-  {
-    id: 'svc-2',
-    uuid: 'service-uuid-2',
-    tag: 'Second Service',
-    characteristics: [
-      {
-        id: 'char-3',
-        uuid: 'char-uuid-3',
-        tag: 'Char 3',
-        properties: { read: false, write: true, notify: true },
-        defaultValue: '',
+        defaultValue: 'AB CD',
       },
     ],
   },
 ]
 
-describe('indicesToUuids', () => {
-  it('should map valid indices to UUIDs', () => {
-    const result = indicesToUuids(testSchema, 0, 0)
-    expect(result).toEqual({
-      serviceUuid: 'service-uuid-1',
-      charUuid: 'char-uuid-1',
-    })
-  })
+function fn(name: string): UserFunction {
+  return { id: `fn-${name}`, name, body: '' }
+}
 
-  it('should map second service indices', () => {
-    const result = indicesToUuids(testSchema, 1, 0)
-    expect(result).toEqual({
-      serviceUuid: 'service-uuid-2',
-      charUuid: 'char-uuid-3',
-    })
-  })
+function scenario(overrides: Partial<Scenario> & Pick<Scenario, 'name' | 'trigger'>): Scenario {
+  return { id: `sc-${overrides.name}`, enabled: true, steps: [], ...overrides }
+}
 
-  it('should map second characteristic', () => {
-    const result = indicesToUuids(testSchema, 0, 1)
-    expect(result).toEqual({
-      serviceUuid: 'service-uuid-1',
-      charUuid: 'char-uuid-2',
-    })
-  })
+/** Fake transport: records outbound calls, lets a test push inbound events. */
+function fakeConnection() {
+  const notified: { serviceUuid: string; charUuid: string; data: number[] }[] = []
+  const responded: { serviceUuid: string; charUuid: string; data: number[] }[] = []
+  let handler: TransportEventHandler | null = null
 
-  it('should return null for invalid service index', () => {
-    const result = indicesToUuids(testSchema, 99, 0)
-    expect(result).toBeNull()
-  })
-
-  it('should return null for invalid characteristic index', () => {
-    const result = indicesToUuids(testSchema, 0, 99)
-    expect(result).toBeNull()
-  })
-
-  it('should handle empty schema', () => {
-    const result = indicesToUuids([], 0, 0)
-    expect(result).toBeNull()
-  })
-})
-
-describe('uuidsToIndices', () => {
-  it('should map valid UUIDs to indices', () => {
-    const result = uuidsToIndices(testSchema, 'service-uuid-1', 'char-uuid-1')
-    expect(result).toEqual({ svcIdx: 0, chrIdx: 0 })
-  })
-
-  it('should map second service UUIDs', () => {
-    const result = uuidsToIndices(testSchema, 'service-uuid-2', 'char-uuid-3')
-    expect(result).toEqual({ svcIdx: 1, chrIdx: 0 })
-  })
-
-  it('should map second characteristic', () => {
-    const result = uuidsToIndices(testSchema, 'service-uuid-1', 'char-uuid-2')
-    expect(result).toEqual({ svcIdx: 0, chrIdx: 1 })
-  })
-
-  it('should return null for unknown service UUID', () => {
-    const result = uuidsToIndices(testSchema, 'unknown-service', 'char-uuid-1')
-    expect(result).toBeNull()
-  })
-
-  it('should return null for unknown characteristic UUID', () => {
-    const result = uuidsToIndices(testSchema, 'service-uuid-1', 'unknown-char')
-    expect(result).toBeNull()
-  })
-
-  it('should return null for mismatched service/char UUIDs', () => {
-    // char-uuid-3 belongs to service-uuid-2, not service-uuid-1
-    const result = uuidsToIndices(testSchema, 'service-uuid-1', 'char-uuid-3')
-    expect(result).toBeNull()
-  })
-
-  it('should handle empty schema', () => {
-    const result = uuidsToIndices([], 'any-uuid', 'any-char')
-    expect(result).toBeNull()
-  })
-})
-
-describe('scenario trigger matching', () => {
-  const scenarios: Scenario[] = [
-    {
-      id: 'scenario-1',
-      name: 'Write Handler',
-      enabled: true,
-      trigger: {
-        kind: TriggerKind.CharWrite,
-        serviceUuid: 'service-uuid-1',
-        charUuid: 'char-uuid-1',
-      },
-      steps: [{ kind: StepKind.CallFunction, functionName: 'echo' }],
+  const connection: TransportConnection = {
+    async uploadSchema() {},
+    async notify(serviceUuid, charUuid, data) {
+      notified.push({ serviceUuid, charUuid, data: [...data] })
     },
-    {
-      id: 'scenario-2',
-      name: 'Read Handler',
-      enabled: true,
-      trigger: {
-        kind: TriggerKind.CharRead,
-        serviceUuid: 'service-uuid-1',
-        charUuid: 'char-uuid-2',
-      },
-      steps: [{ kind: StepKind.Respond }],
+    async respondToRead(serviceUuid, charUuid, data) {
+      responded.push({ serviceUuid, charUuid, data: [...data] })
     },
-    {
-      id: 'scenario-3',
-      name: 'Disabled Scenario',
-      enabled: false,
-      trigger: {
-        kind: TriggerKind.CharWrite,
-        serviceUuid: 'service-uuid-1',
-        charUuid: 'char-uuid-1',
-      },
-      steps: [{ kind: StepKind.CallFunction, functionName: 'disabled' }],
-    },
-  ]
-
-  function findMatchingScenarios(
-    scenarios: Scenario[],
-    triggerKind: TriggerKind.CharWrite | TriggerKind.CharRead,
-    serviceUuid: string,
-    charUuid: string
-  ): Scenario[] {
-    return scenarios.filter(s => {
-      if (!s.enabled) return false
-      const t = s.trigger
-      return t.kind === triggerKind && t.serviceUuid === serviceUuid && t.charUuid === charUuid
-    })
-  }
-
-  it('should match write trigger', () => {
-    const matches = findMatchingScenarios(scenarios, TriggerKind.CharWrite, 'service-uuid-1', 'char-uuid-1')
-    expect(matches).toHaveLength(1)
-    expect(matches[0].name).toBe('Write Handler')
-  })
-
-  it('should match read trigger', () => {
-    const matches = findMatchingScenarios(scenarios, TriggerKind.CharRead, 'service-uuid-1', 'char-uuid-2')
-    expect(matches).toHaveLength(1)
-    expect(matches[0].name).toBe('Read Handler')
-  })
-
-  it('should not match disabled scenarios', () => {
-    // Both scenario-1 and scenario-3 have the same trigger, but 3 is disabled
-    const matches = findMatchingScenarios(scenarios, TriggerKind.CharWrite, 'service-uuid-1', 'char-uuid-1')
-    expect(matches).toHaveLength(1)
-    expect(matches.every(s => s.enabled)).toBe(true)
-  })
-
-  it('should not match wrong trigger kind', () => {
-    const matches = findMatchingScenarios(scenarios, TriggerKind.CharRead, 'service-uuid-1', 'char-uuid-1')
-    expect(matches).toHaveLength(0)
-  })
-
-  it('should not match wrong UUID', () => {
-    const matches = findMatchingScenarios(scenarios, TriggerKind.CharWrite, 'service-uuid-1', 'wrong-uuid')
-    expect(matches).toHaveLength(0)
-  })
-
-  it('should return empty for no matches', () => {
-    const matches = findMatchingScenarios(scenarios, TriggerKind.CharWrite, 'unknown', 'unknown')
-    expect(matches).toHaveLength(0)
-  })
-})
-
-describe('scenario step execution', () => {
-  // Simulate step execution logic
-
-  interface StepResult {
-    executed: boolean
-    data: Uint8Array | null
-  }
-
-  async function executeCallFunctionStep(
-    functionName: string,
-    functions: UserFunction[],
-    input: Uint8Array,
-    executeSync: (fn: UserFunction, input: Uint8Array) => Uint8Array | null
-  ): Promise<StepResult> {
-    const fn = functions.find(f => f.name === functionName)
-    if (!fn) {
-      return { executed: false, data: null }
-    }
-    const result = executeSync(fn, input)
-    return { executed: true, data: result }
-  }
-
-  const testFunctions: UserFunction[] = [
-    { id: '1', name: 'echo', body: 'return input;' },
-    { id: '2', name: 'double', body: 'return new Uint8Array([...input, ...input]);' },
-  ]
-
-  it('should execute function step with matching function', async () => {
-    const mockExecute = vi.fn().mockReturnValue(new Uint8Array([0xaa, 0xbb]))
-    const result = await executeCallFunctionStep('echo', testFunctions, new Uint8Array([0xaa, 0xbb]), mockExecute)
-
-    expect(result.executed).toBe(true)
-    expect(mockExecute).toHaveBeenCalled()
-    expect(mockExecute.mock.calls[0][0].name).toBe('echo')
-  })
-
-  it('should fail for unknown function', async () => {
-    const mockExecute = vi.fn()
-    const result = await executeCallFunctionStep('nonexistent', testFunctions, new Uint8Array(), mockExecute)
-
-    expect(result.executed).toBe(false)
-    expect(result.data).toBeNull()
-    expect(mockExecute).not.toHaveBeenCalled()
-  })
-
-  it('should handle function returning null', async () => {
-    const mockExecute = vi.fn().mockReturnValue(null)
-    const result = await executeCallFunctionStep('echo', testFunctions, new Uint8Array([0x01]), mockExecute)
-
-    expect(result.executed).toBe(true)
-    expect(result.data).toBeNull()
-  })
-})
-
-describe('pipeline execution flow', () => {
-  // Test the full pipeline flow with multiple steps
-
-  interface PipelineContext {
-    buffer: Uint8Array | null
-    logs: string[]
-    notifications: Array<{ svcIdx: number; chrIdx: number; data: Uint8Array }>
-    response: Uint8Array | null
-  }
-
-  function executePipeline(
-    steps: Array<{ kind: StepKind; functionName?: string; serviceUuid?: string; charUuid?: string }>,
-    schema: Schema,
-    functions: UserFunction[],
-    initialInput: Uint8Array,
-    executeFunction: (fn: UserFunction, input: Uint8Array) => Uint8Array | null,
-    triggerKind: TriggerKind.CharWrite | TriggerKind.CharRead = TriggerKind.CharWrite,
-    _triggerServiceUuid = '',
-    _triggerCharUuid = ''
-  ): PipelineContext {
-    const ctx: PipelineContext = {
-      buffer: initialInput,
-      logs: [],
-      notifications: [],
-      response: null,
-    }
-
-    for (const step of steps) {
-      switch (step.kind) {
-        case StepKind.CallFunction: {
-          const fn = functions.find(f => f.name === step.functionName)
-          if (!fn) {
-            ctx.logs.push(`function "${step.functionName}" not found`)
-            ctx.buffer = null
-            break
-          }
-          ctx.buffer = executeFunction(fn, ctx.buffer ?? new Uint8Array())
-          if (!ctx.buffer) {
-            ctx.logs.push(`function "${step.functionName}" returned null`)
-          }
-          break
-        }
-        case StepKind.Notify: {
-          if (!ctx.buffer) {
-            ctx.logs.push('notify: no data')
-            break
-          }
-          const idx = uuidsToIndices(schema, step.serviceUuid!, step.charUuid!)
-          if (!idx) {
-            ctx.logs.push('notify: char not found')
-            break
-          }
-          ctx.notifications.push({
-            svcIdx: idx.svcIdx,
-            chrIdx: idx.chrIdx,
-            data: ctx.buffer,
-          })
-          break
-        }
-        case StepKind.Respond: {
-          if (triggerKind !== TriggerKind.CharRead) {
-            ctx.logs.push('respond: only valid for char-read')
-            break
-          }
-          if (!ctx.buffer) {
-            ctx.logs.push('respond: no data')
-            break
-          }
-          ctx.response = ctx.buffer
-          break
-        }
+    onEvent(h) {
+      handler = h
+      return () => {
+        handler = null
       }
-
-      // Stop pipeline if buffer is null after call-function
-      if (!ctx.buffer && step.kind === StepKind.CallFunction) break
-    }
-
-    return ctx
+    },
+    async stopDevice() {},
+    async disconnect() {},
   }
 
-  const testFunctions: UserFunction[] = [
-    { id: '1', name: 'echo', body: 'return input;' },
-    { id: '2', name: 'addPrefix', body: 'return new Uint8Array([0xFF, ...input]);' },
-  ]
+  return {
+    connection,
+    notified,
+    responded,
+    emit: (event: TransportEvent) => handler?.(event),
+    hasHandler: () => handler !== null,
+  }
+}
 
-  it('should execute single call-function step', () => {
-    const mockExecute = vi.fn().mockReturnValue(new Uint8Array([0xaa]))
-    const ctx = executePipeline(
-      [{ kind: StepKind.CallFunction, functionName: 'echo' }],
-      testSchema,
-      testFunctions,
-      new Uint8Array([0xaa]),
-      mockExecute
-    )
+interface StartOptions {
+  scenarios?: Scenario[]
+  functions?: UserFunction[]
+  onDisconnect?: () => void
+}
 
-    expect(ctx.buffer).toEqual(new Uint8Array([0xaa]))
-    expect(mockExecute).toHaveBeenCalledTimes(1)
+function start(transport: ReturnType<typeof fakeConnection>, options: StartOptions = {}) {
+  const logs: string[] = []
+  const scenarios = options.scenarios ?? []
+  // A live array so a test can edit scenarios mid-run, the way the editor does.
+  const live = [...scenarios]
+  const runtime = startRuntime({
+    connection: transport.connection,
+    schema,
+    getScenarios: () => live,
+    getFunctions: () => options.functions ?? [],
+    session: createSessionState(),
+    log: msg => logs.push(msg),
+    fnLog: () => {},
+    onDisconnect: options.onDisconnect ?? (() => {}),
   })
+  return { runtime, logs, live }
+}
 
-  it('should chain multiple function calls', () => {
-    const mockExecute = vi
-      .fn()
-      .mockReturnValueOnce(new Uint8Array([0xaa]))
-      .mockReturnValueOnce(new Uint8Array([0xff, 0xaa]))
+/** Let every queued microtask and expired timer settle. */
+async function settle(ms = 0) {
+  await vi.advanceTimersByTimeAsync(ms)
+}
 
-    const ctx = executePipeline(
-      [
-        { kind: StepKind.CallFunction, functionName: 'echo' },
-        { kind: StepKind.CallFunction, functionName: 'addPrefix' },
+beforeEach(() => {
+  vi.useFakeTimers()
+  stubs.clear()
+  executed = []
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+// --- trigger matching -------------------------------------------------------
+
+describe('char-write triggers', () => {
+  it('runs a scenario bound to the written characteristic', async () => {
+    const t = fakeConnection()
+    stubs.set('echo', input => ({ output: input }))
+    start(t, {
+      functions: [fn('echo')],
+      scenarios: [
+        scenario({
+          name: 'On write',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [
+            { kind: StepKind.CallFunction, functionName: 'echo' },
+            { kind: StepKind.Notify, serviceUuid: SVC, charUuid: CHAR_A },
+          ],
+        }),
       ],
-      testSchema,
-      testFunctions,
-      new Uint8Array([0xaa]),
-      mockExecute
-    )
-
-    expect(ctx.buffer).toEqual(new Uint8Array([0xff, 0xaa]))
-    expect(mockExecute).toHaveBeenCalledTimes(2)
-  })
-
-  it('should execute notify step', () => {
-    const mockExecute = vi.fn().mockReturnValue(new Uint8Array([0xbb, 0xcc]))
-
-    const ctx = executePipeline(
-      [
-        { kind: StepKind.CallFunction, functionName: 'echo' },
-        { kind: StepKind.Notify, serviceUuid: 'service-uuid-1', charUuid: 'char-uuid-1' },
-      ],
-      testSchema,
-      testFunctions,
-      new Uint8Array([0xbb, 0xcc]),
-      mockExecute
-    )
-
-    expect(ctx.notifications).toHaveLength(1)
-    expect(ctx.notifications[0]).toEqual({
-      svcIdx: 0,
-      chrIdx: 0,
-      data: new Uint8Array([0xbb, 0xcc]),
     })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1, 2, 3]) })
+    await settle()
+
+    expect(executed).toEqual([{ name: 'echo', input: [1, 2, 3] }])
+    expect(t.notified).toEqual([{ serviceUuid: SVC, charUuid: CHAR_A, data: [1, 2, 3] }])
   })
 
-  it('should execute respond step for char-read', () => {
-    const mockExecute = vi.fn().mockReturnValue(new Uint8Array([0xdd]))
-
-    const ctx = executePipeline(
-      [{ kind: StepKind.CallFunction, functionName: 'echo' }, { kind: StepKind.Respond }],
-      testSchema,
-      testFunctions,
-      new Uint8Array([0xdd]),
-      mockExecute,
-      TriggerKind.CharRead
-    )
-
-    expect(ctx.response).toEqual(new Uint8Array([0xdd]))
-  })
-
-  it('should ignore respond step for char-write', () => {
-    const mockExecute = vi.fn().mockReturnValue(new Uint8Array([0xdd]))
-
-    const ctx = executePipeline(
-      [{ kind: StepKind.CallFunction, functionName: 'echo' }, { kind: StepKind.Respond }],
-      testSchema,
-      testFunctions,
-      new Uint8Array([0xdd]),
-      mockExecute,
-      TriggerKind.CharWrite
-    )
-
-    expect(ctx.response).toBeNull()
-    expect(ctx.logs).toContain('respond: only valid for char-read')
-  })
-
-  it('should stop pipeline when function returns null', () => {
-    const mockExecute = vi.fn().mockReturnValue(null)
-
-    const ctx = executePipeline(
-      [
-        { kind: StepKind.CallFunction, functionName: 'echo' },
-        { kind: StepKind.CallFunction, functionName: 'addPrefix' },
-        { kind: StepKind.Notify, serviceUuid: 'service-uuid-1', charUuid: 'char-uuid-1' },
+  it('ignores disabled scenarios', async () => {
+    const t = fakeConnection()
+    start(t, {
+      functions: [fn('echo')],
+      scenarios: [
+        scenario({
+          name: 'Off',
+          enabled: false,
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'echo' }],
+        }),
       ],
-      testSchema,
-      testFunctions,
-      new Uint8Array([0xaa]),
-      mockExecute
-    )
+    })
 
-    // Should stop after first function returns null
-    expect(mockExecute).toHaveBeenCalledTimes(1)
-    expect(ctx.buffer).toBeNull()
-    expect(ctx.notifications).toHaveLength(0)
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    expect(executed).toEqual([])
   })
 
-  it('should log error for unknown function', () => {
-    const mockExecute = vi.fn()
-
-    const ctx = executePipeline(
-      [{ kind: StepKind.CallFunction, functionName: 'nonexistent' }],
-      testSchema,
-      testFunctions,
-      new Uint8Array([0xaa]),
-      mockExecute
-    )
-
-    expect(ctx.logs).toContain('function "nonexistent" not found')
-    expect(mockExecute).not.toHaveBeenCalled()
-  })
-
-  it('should not reach notify when call-function returns null (pipeline stops)', () => {
-    const mockExecute = vi.fn().mockReturnValue(null)
-
-    const ctx = executePipeline(
-      [
-        { kind: StepKind.CallFunction, functionName: 'echo' },
-        { kind: StepKind.Notify, serviceUuid: 'service-uuid-1', charUuid: 'char-uuid-1' },
+  it('ignores a scenario bound to a different characteristic', async () => {
+    const t = fakeConnection()
+    start(t, {
+      functions: [fn('echo')],
+      scenarios: [
+        scenario({
+          name: 'Other char',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_B },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'echo' }],
+        }),
       ],
-      testSchema,
-      testFunctions,
-      new Uint8Array([0xaa]),
-      mockExecute
-    )
+    })
 
-    // Pipeline stops after call-function returns null, notify is never reached
-    expect(ctx.logs).toContain('function "echo" returned null')
-    expect(ctx.notifications).toHaveLength(0)
-    expect(ctx.buffer).toBeNull()
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    expect(executed).toEqual([])
   })
 
-  it('should log error for notify with invalid char', () => {
-    const mockExecute = vi.fn().mockReturnValue(new Uint8Array([0xaa]))
-
-    const ctx = executePipeline(
-      [
-        { kind: StepKind.CallFunction, functionName: 'echo' },
-        { kind: StepKind.Notify, serviceUuid: 'unknown-svc', charUuid: 'unknown-char' },
+  it('ignores a read-triggered scenario on a write', async () => {
+    const t = fakeConnection()
+    start(t, {
+      functions: [fn('echo')],
+      scenarios: [
+        scenario({
+          name: 'Read only',
+          trigger: { kind: TriggerKind.CharRead, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'echo' }],
+        }),
       ],
-      testSchema,
-      testFunctions,
-      new Uint8Array([0xaa]),
-      mockExecute
-    )
+    })
 
-    expect(ctx.logs).toContain('notify: char not found')
-    expect(ctx.notifications).toHaveLength(0)
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    expect(executed).toEqual([])
+  })
+
+  it('runs every matching scenario, in order', async () => {
+    const t = fakeConnection()
+    stubs.set('first', input => ({ output: input }))
+    stubs.set('second', input => ({ output: input }))
+    const trigger = { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A } as const
+    start(t, {
+      functions: [fn('first'), fn('second')],
+      scenarios: [
+        scenario({ name: 'A', trigger, steps: [{ kind: StepKind.CallFunction, functionName: 'first' }] }),
+        scenario({ name: 'B', trigger, steps: [{ kind: StepKind.CallFunction, functionName: 'second' }] }),
+      ],
+    })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([9]) })
+    await settle()
+
+    expect(executed.map(e => e.name)).toEqual(['first', 'second'])
+  })
+})
+
+// --- step execution ---------------------------------------------------------
+
+describe('step execution', () => {
+  it('feeds each function the previous one’s output', async () => {
+    const t = fakeConnection()
+    stubs.set('double', input => ({ output: new Uint8Array(input.map(b => b * 2)) }))
+    stubs.set('inc', input => ({ output: new Uint8Array(input.map(b => b + 1)) }))
+    start(t, {
+      functions: [fn('double'), fn('inc')],
+      scenarios: [
+        scenario({
+          name: 'Chain',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [
+            { kind: StepKind.CallFunction, functionName: 'double' },
+            { kind: StepKind.CallFunction, functionName: 'inc' },
+            { kind: StepKind.Notify, serviceUuid: SVC, charUuid: CHAR_A },
+          ],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1, 2]) })
+    await settle()
+
+    expect(executed).toEqual([
+      { name: 'double', input: [1, 2] },
+      { name: 'inc', input: [2, 4] },
+    ])
+    expect(t.notified[0].data).toEqual([3, 5])
+  })
+
+  it('stops the pipeline when a function returns null', async () => {
+    const t = fakeConnection()
+    stubs.set('drop', () => ({ output: null }))
+    start(t, {
+      functions: [fn('drop')],
+      scenarios: [
+        scenario({
+          name: 'Dropped',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [
+            { kind: StepKind.CallFunction, functionName: 'drop' },
+            { kind: StepKind.Notify, serviceUuid: SVC, charUuid: CHAR_A },
+          ],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    expect(t.notified).toEqual([])
+  })
+
+  it('logs and stops the pipeline for an unknown function name', async () => {
+    const t = fakeConnection()
+    const { logs } = start(t, {
+      functions: [],
+      scenarios: [
+        scenario({
+          name: 'Missing',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [
+            { kind: StepKind.CallFunction, functionName: 'nope' },
+            { kind: StepKind.Notify, serviceUuid: SVC, charUuid: CHAR_A },
+          ],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    expect(logs.some(l => l.includes('"nope" not found'))).toBe(true)
+    expect(t.notified).toEqual([])
+  })
+
+  it('ignores a respond step outside a char-read', async () => {
+    const t = fakeConnection()
+    const { logs } = start(t, {
+      scenarios: [
+        scenario({
+          name: 'Bad respond',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [{ kind: StepKind.Respond }],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    expect(t.responded).toEqual([])
+    expect(logs.some(l => l.includes('only valid for char-read'))).toBe(true)
+  })
+})
+
+// --- reads ------------------------------------------------------------------
+
+describe('char-read handling', () => {
+  it('answers with the scenario’s buffer', async () => {
+    const t = fakeConnection()
+    stubs.set('value', () => ({ output: new Uint8Array([0x42]) }))
+    start(t, {
+      functions: [fn('value')],
+      scenarios: [
+        scenario({
+          name: 'Serve',
+          trigger: { kind: TriggerKind.CharRead, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'value' }, { kind: StepKind.Respond }],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-read', serviceUuid: SVC, charUuid: CHAR_A })
+    await settle()
+
+    expect(t.responded).toEqual([{ serviceUuid: SVC, charUuid: CHAR_A, data: [0x42] }])
+  })
+
+  it('falls back to the characteristic default when no scenario responds', async () => {
+    const t = fakeConnection()
+    start(t)
+
+    t.emit({ type: 'char-read', serviceUuid: SVC, charUuid: CHAR_B })
+    await settle()
+
+    // CHAR_B's defaultValue is "AB CD".
+    expect(t.responded).toEqual([{ serviceUuid: SVC, charUuid: CHAR_B, data: [0xab, 0xcd] }])
+  })
+
+  it('matches the default by UUID case-insensitively', async () => {
+    const t = fakeConnection()
+    start(t)
+
+    t.emit({ type: 'char-read', serviceUuid: SVC.toUpperCase(), charUuid: CHAR_B.toUpperCase() })
+    await settle()
+
+    expect(t.responded[0].data).toEqual([0xab, 0xcd])
+  })
+
+  it('answers an unknown characteristic with an empty buffer rather than stalling', async () => {
+    const t = fakeConnection()
+    start(t)
+
+    t.emit({ type: 'char-read', serviceUuid: SVC, charUuid: 'not-in-schema' })
+    await settle()
+
+    expect(t.responded).toEqual([{ serviceUuid: SVC, charUuid: 'not-in-schema', data: [] }])
+  })
+
+  it('does not add a default response when a scenario already responded', async () => {
+    const t = fakeConnection()
+    stubs.set('value', () => ({ output: new Uint8Array([1]) }))
+    start(t, {
+      functions: [fn('value')],
+      scenarios: [
+        scenario({
+          name: 'Serve',
+          trigger: { kind: TriggerKind.CharRead, serviceUuid: SVC, charUuid: CHAR_B },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'value' }, { kind: StepKind.Respond }],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-read', serviceUuid: SVC, charUuid: CHAR_B })
+    await settle()
+
+    expect(t.responded).toHaveLength(1)
+    expect(t.responded[0].data).toEqual([1])
+  })
+})
+
+// --- ctx.runScenario() chaining ---------------------------------------------
+
+describe('ctx.runScenario() chaining', () => {
+  it('runs a scenario requested by a function', async () => {
+    const t = fakeConnection()
+    stubs.set('caller', input => ({ output: input, scenarioRequests: ['Callee'] }))
+    stubs.set('callee', input => ({ output: input }))
+    start(t, {
+      functions: [fn('caller'), fn('callee')],
+      scenarios: [
+        scenario({
+          name: 'Caller',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'caller' }],
+        }),
+        scenario({
+          name: 'Callee',
+          trigger: { kind: TriggerKind.Manual },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'callee' }],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([7]) })
+    await settle()
+
+    expect(executed.map(e => e.name)).toEqual(['caller', 'callee'])
+    // The callee receives the caller's output buffer.
+    expect(executed[1].input).toEqual([7])
+  })
+
+  it('ignores a request for a scenario that does not exist', async () => {
+    const t = fakeConnection()
+    stubs.set('caller', input => ({ output: input, scenarioRequests: ['Ghost'] }))
+    start(t, {
+      functions: [fn('caller')],
+      scenarios: [
+        scenario({
+          name: 'Caller',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'caller' }],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    expect(executed.map(e => e.name)).toEqual(['caller'])
+  })
+
+  it('caps a self-triggering scenario instead of looping forever', async () => {
+    const t = fakeConnection()
+    // The classic runaway: the function asks for its own scenario every time.
+    stubs.set('loop', input => ({ output: input, scenarioRequests: ['Loop'] }))
+    const { logs } = start(t, {
+      functions: [fn('loop')],
+      scenarios: [
+        scenario({
+          name: 'Loop',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'loop' }],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    // The triggering run, plus MAX_SCENARIO_DEPTH chained ones, then it stops.
+    expect(executed).toHaveLength(MAX_SCENARIO_DEPTH + 1)
+    expect(logs.some(l => l.includes('depth limit'))).toBe(true)
+  })
+
+  it('caps an A→B→A cycle too', async () => {
+    const t = fakeConnection()
+    stubs.set('toB', input => ({ output: input, scenarioRequests: ['B'] }))
+    stubs.set('toA', input => ({ output: input, scenarioRequests: ['A'] }))
+    start(t, {
+      functions: [fn('toB'), fn('toA')],
+      scenarios: [
+        scenario({
+          name: 'A',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'toB' }],
+        }),
+        scenario({
+          name: 'B',
+          trigger: { kind: TriggerKind.Manual },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'toA' }],
+        }),
+      ],
+    })
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    expect(executed).toHaveLength(MAX_SCENARIO_DEPTH + 1)
+  })
+})
+
+// --- triggers that do not come from BLE -------------------------------------
+
+describe('startup and timer triggers', () => {
+  it('runs startup scenarios shortly after start', async () => {
+    const t = fakeConnection()
+    stubs.set('boot', () => ({ output: new Uint8Array([1]) }))
+    start(t, {
+      functions: [fn('boot')],
+      scenarios: [
+        scenario({
+          name: 'Boot',
+          trigger: { kind: TriggerKind.Startup },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'boot' }],
+        }),
+      ],
+    })
+
+    expect(executed).toEqual([])
+    await settle(600)
+    expect(executed.map(e => e.name)).toEqual(['boot'])
+  })
+
+  it('repeats a repeating timer and stops a one-shot', async () => {
+    const t = fakeConnection()
+    stubs.set('tick', () => ({ output: new Uint8Array([1]) }))
+    stubs.set('once', () => ({ output: new Uint8Array([1]) }))
+    start(t, {
+      functions: [fn('tick'), fn('once')],
+      scenarios: [
+        scenario({
+          name: 'Repeat',
+          trigger: { kind: TriggerKind.Timer, intervalMs: 100, repeat: true },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'tick' }],
+        }),
+        scenario({
+          name: 'Once',
+          trigger: { kind: TriggerKind.Timer, intervalMs: 100, repeat: false },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'once' }],
+        }),
+      ],
+    })
+
+    await settle(350)
+
+    expect(executed.filter(e => e.name === 'tick')).toHaveLength(3)
+    expect(executed.filter(e => e.name === 'once')).toHaveLength(1)
+  })
+
+  it('re-reads the scenario on each tick, so edits apply without a restart', async () => {
+    const t = fakeConnection()
+    stubs.set('old', () => ({ output: new Uint8Array([1]) }))
+    stubs.set('new', () => ({ output: new Uint8Array([1]) }))
+    const { live } = start(t, {
+      functions: [fn('old'), fn('new')],
+      scenarios: [
+        scenario({
+          name: 'Timer',
+          trigger: { kind: TriggerKind.Timer, intervalMs: 100, repeat: true },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'old' }],
+        }),
+      ],
+    })
+
+    await settle(150)
+    live[0] = { ...live[0], steps: [{ kind: StepKind.CallFunction, functionName: 'new' }] }
+    await settle(200)
+
+    expect(executed.map(e => e.name)).toEqual(['old', 'new', 'new'])
+  })
+
+  it('skips a tick for a scenario that was disabled mid-run', async () => {
+    const t = fakeConnection()
+    stubs.set('tick', () => ({ output: new Uint8Array([1]) }))
+    const { live } = start(t, {
+      functions: [fn('tick')],
+      scenarios: [
+        scenario({
+          name: 'Timer',
+          trigger: { kind: TriggerKind.Timer, intervalMs: 100, repeat: true },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'tick' }],
+        }),
+      ],
+    })
+
+    await settle(150)
+    live[0] = { ...live[0], enabled: false }
+    await settle(300)
+
+    expect(executed).toHaveLength(1)
+  })
+
+  it('runs a manual scenario through the returned runScenario()', async () => {
+    const t = fakeConnection()
+    stubs.set('manual', () => ({ output: new Uint8Array([1]) }))
+    const manual = scenario({
+      name: 'Manual',
+      trigger: { kind: TriggerKind.Manual },
+      steps: [{ kind: StepKind.CallFunction, functionName: 'manual' }],
+    })
+    const { runtime } = start(t, { functions: [fn('manual')], scenarios: [manual] })
+
+    await runtime.runScenario(manual)
+
+    expect(executed.map(e => e.name)).toEqual(['manual'])
+  })
+})
+
+// --- lifecycle --------------------------------------------------------------
+
+describe('lifecycle', () => {
+  it('stops responding to events and unsubscribes after stop()', async () => {
+    const t = fakeConnection()
+    stubs.set('echo', input => ({ output: input }))
+    const { runtime } = start(t, {
+      functions: [fn('echo')],
+      scenarios: [
+        scenario({
+          name: 'Echo',
+          trigger: { kind: TriggerKind.CharWrite, serviceUuid: SVC, charUuid: CHAR_A },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'echo' }],
+        }),
+      ],
+    })
+
+    runtime.stop()
+    expect(t.hasHandler()).toBe(false)
+
+    t.emit({ type: 'char-write', serviceUuid: SVC, charUuid: CHAR_A, data: new Uint8Array([1]) })
+    await settle()
+
+    expect(executed).toEqual([])
+  })
+
+  it('cancels pending timers on stop()', async () => {
+    const t = fakeConnection()
+    stubs.set('tick', () => ({ output: new Uint8Array([1]) }))
+    const { runtime } = start(t, {
+      functions: [fn('tick')],
+      scenarios: [
+        scenario({
+          name: 'Timer',
+          trigger: { kind: TriggerKind.Timer, intervalMs: 100, repeat: true },
+          steps: [{ kind: StepKind.CallFunction, functionName: 'tick' }],
+        }),
+      ],
+    })
+
+    await settle(150)
+    runtime.stop()
+    await settle(500)
+
+    expect(executed).toHaveLength(1)
+  })
+
+  it('reports a disconnect once and calls onDisconnect', async () => {
+    const t = fakeConnection()
+    const onDisconnect = vi.fn()
+    const { logs } = start(t, { onDisconnect })
+
+    t.emit({ type: 'disconnected', reason: 'phone hung up' })
+    await settle()
+
+    expect(onDisconnect).toHaveBeenCalledTimes(1)
+    expect(logs.some(l => l.includes('phone hung up'))).toBe(true)
+    expect(t.hasHandler()).toBe(false)
+  })
+
+  it('logs a schema mismatch without tearing the runtime down', async () => {
+    const t = fakeConnection()
+    const { logs } = start(t)
+
+    t.emit({ type: 'schema-mismatch' })
+    await settle()
+
+    expect(logs.some(l => l.includes('Schema mismatch'))).toBe(true)
+    expect(t.hasHandler()).toBe(true)
   })
 })

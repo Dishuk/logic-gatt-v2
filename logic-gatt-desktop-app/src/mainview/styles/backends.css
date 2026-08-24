@@ -1,0 +1,289 @@
+/**
+ * Connect UI for the non-phone transports, and the error boundary.
+ */
+
+/* Backend plugin connect UI */
+.plugin-connect-ui {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.port-selection h4,
+.plugin-actions h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.port-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.port-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.75rem;
+  background: var(--bg-medium);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.port-item:hover {
+  border-color: var(--accent-blue);
+  background: var(--bg-hover);
+}
+
+.port-item.selected {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue-transparent);
+}
+
+.port-path {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.port-manufacturer {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.no-ports {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.action-button {
+  padding: 0.5rem 1rem;
+  background: var(--bg-button);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.action-button:hover:not(:disabled) {
+  background: var(--bg-button-hover);
+  color: var(--text-primary);
+}
+
+.error-message {
+  background: var(--bg-error);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: var(--color-error);
+}
+
+.cancel-button {
+  padding: 0.75rem 1.5rem;
+  background: var(--bg-button);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.cancel-button:hover:not(:disabled) {
+  background: var(--bg-button-hover);
+  color: var(--text-primary);
+}
+
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+}
+
+.no-plugins {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* USB BLE backend controls */
+.backend-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.backend-controls h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.backend-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.backend-status .status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.backend-status .status-indicator.running {
+  background: var(--color-success);
+}
+
+.backend-status .status-indicator.stopped {
+  background: var(--color-error);
+}
+
+.backend-status .ws-connected {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.backend-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.start-backend-button {
+  padding: 0.5rem 1rem;
+  background: var(--accent-green-dark);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-sm);
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.start-backend-button:hover:not(:disabled) {
+  background: var(--color-success);
+}
+
+.stop-backend-button {
+  padding: 0.5rem 1rem;
+  background: var(--bg-error-btn);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  color: var(--color-error);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.stop-backend-button:hover:not(:disabled) {
+  background: var(--bg-error-btn-hover);
+}
+
+.backend-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+/* Error Boundary */
+.error-boundary {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-body);
+  z-index: 9999;
+}
+
+.error-boundary-content {
+  max-width: 500px;
+  padding: 2rem;
+  background: var(--bg-dark);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.error-boundary-content h2 {
+  color: var(--color-error);
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.error-boundary-content p {
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.error-boundary-content details {
+  text-align: left;
+  margin-bottom: 1rem;
+}
+
+.error-boundary-content summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.error-boundary-content pre {
+  background: var(--bg-darkest);
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--color-error);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-boundary-content .error-stack {
+  margin-top: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.error-boundary-actions button {
+  padding: 0.5rem 1rem;
+}

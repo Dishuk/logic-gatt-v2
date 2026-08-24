@@ -1,0 +1,201 @@
+/**
+ * Confirm / Save As dialogs, and the Convert tab that shares the terminal strip.
+ */
+
+/* Confirm / Save As dialogs. Reuses .help-overlay for the backdrop. */
+.confirm-modal {
+  background: var(--bg-dark);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  width: 90%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px var(--modal-shadow);
+}
+
+.confirm-body {
+  padding: 1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-content);
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.primary-btn {
+  background: var(--accent-blue-transparent);
+  color: var(--accent-blue);
+  border: 1px solid var(--accent-blue);
+}
+
+.primary-btn:hover:not(:disabled) {
+  background: var(--accent-blue);
+  color: var(--bg-darkest);
+}
+
+.danger-btn {
+  background: var(--bg-error-btn);
+  color: var(--color-error);
+  border: 1px solid var(--border-error-transparent);
+}
+
+.danger-btn:hover:not(:disabled) {
+  background: var(--bg-error-btn-hover);
+  border-color: var(--color-error);
+}
+
+.save-as-field {
+  display: block;
+  margin-bottom: 0.85rem;
+}
+
+.save-as-field > span {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.save-as-field input {
+  width: 100%;
+}
+
+.save-as-folder {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.save-as-folder input {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.save-as-warning {
+  margin-top: 0.5rem;
+  color: var(--status-amber);
+  overflow-wrap: anywhere;
+}
+
+/* Convert tab */
+.convert-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--bg-body);
+  padding: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem 1.5rem;
+  align-content: start;
+}
+
+.convert-controls {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.convert-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Binary runs 8 characters per byte, so it gets the full width of both columns. */
+.convert-row--wide,
+.convert-error {
+  grid-column: 1 / -1;
+}
+
+/* Fixed label column keeps every input's left edge aligned across both sections. */
+.convert-row > span {
+  flex: 0 0 6rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.convert-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.convert-input[readonly] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.convert-copy {
+  background: none;
+  border: none;
+  padding: 0.2rem 0.3rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.convert-copy:hover:not(:disabled) {
+  color: var(--accent-blue);
+  background: var(--bg-hover);
+}
+
+.convert-error {
+  font-size: 0.72rem;
+  padding-left: 6.5rem;
+  color: var(--color-error);
+}
+
+/* Side-by-side would squeeze the inputs on a narrow window. */
+@media (max-width: 700px) {
+  .convert-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+  .top-bar {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .panels {
+    flex-direction: column;
+  }
+
+  .panel-left,
+  .panel-right {
+    border-right: none;
+    border-bottom: 1px solid var(--border-primary);
+  }
+
+  /* Stacked vertically: ignore the horizontal split ratio and hide the divider. */
+  .panel-left {
+    flex: 1;
+  }
+
+  .panel-resize-handle {
+    display: none;
+  }
+
+  .panel-right {
+    border-bottom: none;
+  }
+
+  .service-header {
+    flex-wrap: wrap;
+  }
+
+  .service-header .uuid-input {
+    flex: 1;
+    min-width: 0;
+  }
+}

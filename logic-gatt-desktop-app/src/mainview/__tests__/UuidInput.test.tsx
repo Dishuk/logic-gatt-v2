@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { UuidInput } from '../components/UuidInput'
+import { UuidInput, expandShortUuid } from '../components/UuidInput'
 
 // Mock requestAnimationFrame since jsdom doesn't support it properly
 vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -112,7 +112,7 @@ describe('UuidInput component', () => {
     render(<UuidInput value="" onChange={() => {}} />)
 
     const input = screen.getByRole('textbox')
-    expect(input).toHaveAttribute('placeholder', 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
+    expect(input).toHaveAttribute('placeholder', 'full UUID or 16-bit (e.g. 180D)')
   })
 
   it('should have maxLength of 36', () => {
@@ -280,5 +280,25 @@ describe('UuidInput with isDuplicate prop', () => {
 
     rerender(<UuidInput value="" onChange={() => {}} isDuplicate={false} />)
     expect(input.className).not.toContain('input--error')
+  })
+})
+
+describe('expandShortUuid', () => {
+  it('should expand a 16-bit SIG UUID', () => {
+    expect(expandShortUuid('180D')).toBe('0000180d-0000-1000-8000-00805f9b34fb')
+  })
+
+  it('should expand a 32-bit SIG UUID', () => {
+    expect(expandShortUuid('0000180D')).toBe('0000180d-0000-1000-8000-00805f9b34fb')
+  })
+
+  it('should leave a full UUID untouched', () => {
+    const full = '12345678-1234-1234-1234-123456789abc'
+    expect(expandShortUuid(full)).toBe(full)
+  })
+
+  it('should leave an incomplete value untouched', () => {
+    expect(expandShortUuid('180')).toBe('180')
+    expect(expandShortUuid('')).toBe('')
   })
 })

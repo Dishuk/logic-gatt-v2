@@ -14,7 +14,9 @@ interface CharacteristicRowProps {
 
 export function CharacteristicRow({ characteristic, onChange, onRemove, dupUuids }: CharacteristicRowProps) {
   const { properties } = characteristic
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: characteristic.id })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: characteristic.id,
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),

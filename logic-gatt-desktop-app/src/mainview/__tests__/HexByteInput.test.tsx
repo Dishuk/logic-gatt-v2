@@ -42,8 +42,9 @@ describe('toSpaced helper (via component behavior)', () => {
     fireEvent.change(input, { target: { value: 'ABC' } })
     fireEvent.blur(input)
 
-    // ABC -> AB C (pairs with last char alone)
-    expect(onChange).toHaveBeenCalledWith('AB C')
+    // ABC -> AB 0C: the lone digit is padded into a whole byte rather than left
+    // dangling, so the committed value holds no partial byte for readers to differ on.
+    expect(onChange).toHaveBeenCalledWith('AB 0C')
   })
 
   it('should convert to uppercase', () => {
