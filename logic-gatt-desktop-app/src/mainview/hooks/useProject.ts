@@ -99,6 +99,9 @@ export function useProject(log: (msg: string) => void, onProjectLoad?: (data: Pr
         log('Failed to load default preset, starting empty')
       })
       .finally(() => setIsLoading(false))
+    // Deliberately once-only: `didLoad` is the guard, and listing `loadProject`/`log`
+    // would re-run it on every change to them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Refs for runtime access to latest state

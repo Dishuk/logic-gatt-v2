@@ -148,6 +148,9 @@ export function App() {
       }
     })
     return off
+    // `deviceLogger.log` is stable (useCallback with no deps) but `deviceLogger` is a
+    // fresh object each render, so depending on it would resubscribe every time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [port, running, handleStop, deviceLogger.log])
 
   // Ctrl/Cmd+S saves; an untitled project falls through to Save As.

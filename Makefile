@@ -16,7 +16,6 @@ help:
 	@echo "  make ios              - build + run iOS dev build (native BLE)"
 	@echo "  make android          - build + run Android dev build (native BLE)"
 	@echo "  make apk              - build + install RELEASE APK (prod-like local test)"
-	@echo "  make lint             - expo lint"
 	@echo ""
 	@echo "  Desktop (Electrobun - controller / GATT client):"
 	@echo "  make dev              - start the desktop app (electrobun dev --watch)"
@@ -29,6 +28,7 @@ help:
 	@echo ""
 	@echo "  Checks:"
 	@echo "  make test             - run desktop Vitest suite"
+	@echo "  make lint             - lint + format-check both apps"
 	@echo "  make typecheck        - type-check both apps (tsc --noEmit)"
 	@echo ""
 	@echo "  Prod builds:"
@@ -62,8 +62,11 @@ android:
 apk:
 	cd $(MOBILE) && npx expo run:android --variant release --no-bundler
 
+# Mobile: expo lint. Desktop: eslint for correctness + prettier --check for style
+# (`bun run format` in the desktop app rewrites what --check reports).
 lint:
 	cd $(MOBILE) && npm run lint
+	cd $(DESKTOP) && bun run lint
 
 # --- desktop (Electrobun / Bun) ---
 # `dev` = electrobun --watch (Bun main process only); `hmr` = adds Vite HMR for
