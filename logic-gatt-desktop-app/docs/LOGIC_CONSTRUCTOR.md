@@ -60,8 +60,22 @@ The `type` fixes what `getVar` returns and what `setVar` accepts:
 | `string` | `string` | a string |
 
 `setVar` with a wrong type or out-of-range number logs an error and leaves the variable
-unchanged. Values persist across scenario runs and reset to `initialValue` when the schema is
-reloaded. Variables are the only way to share state between scenarios.
+unchanged. Variables are the only way to share state between scenarios.
+
+### Authored value vs. session value
+
+`initialValue` is document data: only the Variables tab writes it, and a run never does. A
+run works against a separate **session value** per variable, seeded from `initialValue`, so
+testing against a device leaves the project file alone.
+
+- **Variables tab** — declares each variable and the value it starts from.
+- **Device → State** — the session values a run is actually using. Each row can be edited
+  live, put back to the project value, or promoted into the project (*Save as initial*).
+
+Session values survive Stop, so a run's end state stays inspectable. When they go back to the
+authored ones is a setting, in the same panel: on Upload & Run, on disconnect, or neither.
+Editing a variable's definition does not disturb a value a run has already produced, except
+when its type changes — a value encoded for the old type cannot be kept.
 
 ---
 
@@ -90,7 +104,7 @@ return writer().uint8(0x00).uint8(cmd).build()
 | `ctx.getVar(name)` | `(string) => Uint8Array \| number \| string \| undefined` | Read a variable, typed per its declaration. Unknown name → warning, returns `undefined`. |
 | `ctx.setVar(name, value)` | `(string, value) => void` | Write a variable. Value must match the variable's type (see [Variables](#variables)); mismatch → error, no change. Unknown name → warning. |
 | `ctx.log(msg)` | `(string) => void` | Print a line to the Terminal panel. |
-| `ctx.runScenario(name)` | `(string) => void` | Queue another scenario to run after this pipeline finishes, with the pipeline's final buffer as its input. Unknown name → warning. |
+| `ctx.runScenario(name)` | `(string) => void` | Queue another scenario to run after this pipeline finishes, with the pipeline's final buffer as its input. Unknown name → warning. Chains stop after 8 levels (see [Execution model](#execution-model)). |
 
 ### `console`
 
@@ -211,14 +225,18 @@ the trigger's input buffer.
 
 ### Execution model
 
-1. On schema upload, variables reset to their initial values, `startup` scenarios run (after
-   a brief settle delay), and `timer` scenarios are scheduled.
+1. On schema upload, session values are reseeded from the authored ones (unless that reset is
+   switched off in *Device → State*), `startup` scenarios run after a brief settle delay, and
+   `timer` scenarios are scheduled.
 2. A `char-write`/`char-read` event runs every enabled scenario whose trigger matches the
    service+characteristic, in definition order. Each matching scenario gets its **own copy**
    of the original input buffer — matching scenarios do not chain into each other.
 3. Within a scenario, the buffer flows step → step. `ctx.runScenario(name)` from inside a
    function queues that scenario to run after the current pipeline, with the final buffer as
    its input.
+4. A queued scenario may queue another, up to **8 levels deep**. Past that the chain is
+   abandoned and a line is logged, so a scenario that re-triggers itself — directly or
+   through a cycle — stops instead of running forever.
 
 ### Examples
 
@@ -241,9 +259,10 @@ A test pairs a function with a fixed input and (optionally) an expected output:
 interface UserTest { id: string; name: string; functionId: string; inputHex: string; expectedHex: string }
 ```
 
-The Test panel runs the selected function against `inputHex`, using the project's current
-**variables** (so `getVar`/`setVar` work, and `setVar` updates the variable). It does not run
-a scenario pipeline, so `ctx.runScenario` has no effect.
+The Test panel runs the selected function against `inputHex`. Each test gets a throwaway
+session seeded from the authored `initialValue`s, so `getVar`/`setVar` behave normally but
+neither the project nor a live device session is touched, and every test starts from the same
+state. It does not run a scenario pipeline, so `ctx.runScenario` has no effect.
 
 - With `expectedHex` set → **pass** if the function's output equals it (hex compared byte for
   byte, whitespace-insensitive).
@@ -258,8 +277,18 @@ The panel shows per-test pass/fail and an aggregate (`passed/total`).
 Everything is serialized together:
 
 ```json
-{ "services": [ ... ], "functions": [ ... ], "variables": [ ... ], "scenarios": [ ... ], "tests": [ ... ] }
+{
+  "deviceSettings": { ... },
+  "services": [ ... ],
+  "functions": [ ... ],
+  "variables": [ ... ],
+  "tests": [ ... ],
+  "scenarios": [ ... ]
+}
 ```
+
+Only authored data is written: runtime `id`s are stripped, and session values stay out. A
+bare array of services is still accepted on open, as the old web app's export format.
 
 Built-in example projects are in `src/bun/presets/` (`default.json` demonstrates the function
 API; `heart-rate-monitor.json` uses timers, reads, and a control point).

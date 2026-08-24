@@ -94,7 +94,8 @@ export function TopBar({ transport, project, files, logger, onUpload, examples =
                 <h3>Quick Start</h3>
                 <ol>
                   <li>
-                    <strong>Define Services</strong> : Add GATT services and characteristics in the left panel
+                    <strong>Define Services</strong> : Add GATT services and characteristics in{' '}
+                    <em>Device &rarr; Schema</em> on the left
                   </li>
                   <li>
                     <strong>Write Functions</strong> : Create reusable logic in the <em>Functions</em> tab
@@ -111,8 +112,14 @@ export function TopBar({ transport, project, files, logger, onUpload, examples =
               <section>
                 <h3>Panels</h3>
                 <dl>
-                  <dt>Services</dt>
+                  <dt>Device &rarr; Schema</dt>
                   <dd>Define BLE services and characteristics with UUIDs, properties (R/W/N), and default values</dd>
+
+                  <dt>Device &rarr; State</dt>
+                  <dd>
+                    The values the running session is working with. Edit one live, put it back with{' '}
+                    <em>Reset</em>, or promote it into the project with <em>Save as initial</em>
+                  </dd>
 
                   <dt>Scenarios</dt>
                   <dd>Event-driven pipelines: trigger on char writes/reads, timers, or startup, then execute steps</dd>
@@ -125,7 +132,8 @@ export function TopBar({ transport, project, files, logger, onUpload, examples =
 
                   <dt>Variables</dt>
                   <dd>
-                    Global state accessible via <code>ctx.getVar()</code> / <code>ctx.setVar()</code>
+                    Declare the variables a project has, and the value each one starts from. Reachable in
+                    functions via <code>ctx.getVar()</code> / <code>ctx.setVar()</code>
                   </dd>
 
                   <dt>Tests</dt>
@@ -159,8 +167,13 @@ export function TopBar({ transport, project, files, logger, onUpload, examples =
                     Use <code>console.log()</code> in functions : output appears in Functions tab of the terminal
                   </li>
                   <li>
-                    Variables hold live state: <code>ctx.setVar()</code> overwrites the value shown in the
-                    <em> Variables</em> tab, and Stop does not restore it — re-enter a value there to reset it
+                    A run never writes to the project. <code>ctx.setVar()</code> changes the session value in{' '}
+                    <em>Device &rarr; State</em>; the starting value in the <em>Variables</em> tab stays put.
+                    Reset one there, or all of them with <em>Reset all</em>
+                  </li>
+                  <li>
+                    <em>Device &rarr; State</em> also chooses when values go back to their project ones —
+                    on Upload &amp; Run, on disconnect, or never
                   </li>
                   <li>Use Tags on services/characteristics for easier identification in scenarios</li>
                   <li>
